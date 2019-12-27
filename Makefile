@@ -60,7 +60,7 @@ browse:
 
 .PHONY: jupyter
 jupyter:
-	( make run; make browse)
+	( make dev; make browse)
 
 
 .PHONY: port_local
@@ -83,6 +83,19 @@ filebrowser:  ### Run a job with File Browser and open UI in the default browser
 		--no-http-auth \
 		$(HTTP_AUTH) \
 		--browse \
+		--detach \
 		--volume $(STORAGE_ROOT):/srv:rw \
 		--env PLATFORMAPI_SERVICE_HOST="." \
 		filebrowser/filebrowser
+
+.PHONY: host_data
+host_data:
+	neuro kill host-data
+	neuro run -s cpu-small \
+	    -v storage:microtubules_classifiaction/data/to_deploy:/data:rw \
+        --http 8686 \
+        --no-http-auth \
+        --name host-data \
+        --browse \
+        frolvlad/alpine-python3 \
+        "python -m http.server 8686"
