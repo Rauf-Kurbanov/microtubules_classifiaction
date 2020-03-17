@@ -1,14 +1,14 @@
-from pathlib import Path
+from datetime import datetime
 
 import pretrainedmodels
 import torch
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
 from catalyst.dl.runner import SupervisedRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
-from catalyst.utils.dataset import split_dataframe
+from catalyst.utils import split_dataframe_train_test
 from torch import nn
-from datetime import datetime
 
+from modules import config
 from modules.data import get_loaders, get_data
 
 
@@ -23,26 +23,23 @@ def get_model(model_name: str, num_classes: int, pretrained: str = "imagenet"):
 
 
 def main():
-    SEED = 42
-    set_global_seed(SEED)
+    set_global_seed(config.SEED)
     prepare_cudnn(deterministic=True)
 
-    DATA_DIR = Path("/data/NewArchive")
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-    LOG_ROOT = Path("/data/logs")
-    log_dir = LOG_ROOT / f"tubles_{current_time}"
-    NUM_EPOCHS = 15
+    log_dir = config.LOG_ROOT / f"tubles_{config.DATA_DIR.stem}_{config.MODE}_{current_time}"
+    df_with_labels, class_names, num_classes = get_data(config.DATA_DIR, config.MODE)
 
-    df_with_labels, class_names, num_classes = get_data(DATA_DIR)
-    train_data, valid_data = split_dataframe(df_with_labels, test_size=0.2,
-                                             random_state=SEED)
+    train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO 100 of each class for test
+                                                        random_state=config.SEED)
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
         'records')
 
-    loaders = get_loaders(data_dir=DATA_DIR,
+    loaders = get_loaders(data_dir=config.DATA_DIR,
                           train_data=train_data,
                           valid_data=valid_data,
-                          num_classes=num_classes)
+                          num_classes=num_classes,
+                          num_workers=0)
 
     model_name = "resnet18"
     model = get_model(model_name, num_classes)
@@ -50,10 +47,10 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0003)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=[9], gamma=0.3
+        optimizer, milestones=[9], gamma=0.3  # TODO milestones ??
     )
 
-    runner = SupervisedRunner()
+    runner = SupervisedRunner(device=config.DEVICE)
 
     runner.train(
         model=model,
@@ -74,8 +71,10 @@ def main():
                 activation="Softmax"
             )
         ],
-        num_epochs=NUM_EPOCHS,
-        verbose=True
+        num_epochs=config.NUM_EPOCHS,
+        verbose=True,
+        main_metric="auc/_mean",
+        fp16={"apex": False}
     )
 
 

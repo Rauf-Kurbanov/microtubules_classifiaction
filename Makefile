@@ -9,6 +9,31 @@ STORAGE_ROOT ?= storage:tubles
 TB_FOLDER ?= $(STORAGE_ROOT)/data/logs
 IMAGE_NAME ?= text_summarization
 
+.PHONY: setup
+setup: ### Setup remote environment
+	$(NEURO) mkdir --parents $(STORAGE_ROOT) \
+		$(PROJECT_PATH_STORAGE)/$(CODE_DIR) \
+		$(PROJECT_PATH_STORAGE)/data \
+		$(PROJECT_PATH_STORAGE)/configs \
+		$(PROJECT_PATH_STORAGE)/notebooks \
+		$(RESULTS_DIR_STORAGE)
+	$(NEURO) run \
+		--name $(SETUP_JOB) \
+		--description "$(PROJECT_ID):setup" \
+		--preset cpu-small \
+		--detach \
+		--env JOB_TIMEOUT=1h \
+		--volume $(PROJECT_PATH_STORAGE):$(PROJECT_PATH_ENV):ro \
+		$(BASE_ENV_NAME) \
+		'sleep infinity'
+	for file in $(PROJECT_FILES); do $(NEURO) cp ./$$file $(PROJECT_PATH_STORAGE)/$$file; done
+	$(NEURO) exec --no-key-check $(SETUP_JOB) "bash -c 'export DEBIAN_FRONTEND=noninteractive && $(APT) update && cat $(PROJECT_PATH_ENV)/apt.txt | xargs -I % $(APT) install --no-install-recommends % && $(APT) clean && $(APT) autoremove && rm -rf /var/lib/apt/lists/*'"
+	$(NEURO) exec --no-key-check $(SETUP_JOB) "bash -c '$(PIP) -r $(PROJECT_PATH_ENV)/requirements.txt'"
+	$(NEURO) exec --no-key-check $(SETUP_JOB) "sed -e 's/: True/: False/' -i /usr/local/lib/python3.6/dist-packages/streamlit/server/Server.py"
+	$(NEURO) --network-timeout 300 job save $(SETUP_JOB) $(CUSTOM_ENV_NAME)
+	$(NEURO) kill $(SETUP_JOB) || :
+	@touch .setup_done
+
 .PHONY: dev
 dev:
 	neuro run -s gpu-small \
