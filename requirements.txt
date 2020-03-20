@@ -13,3 +13,4 @@ lz4==2.2.1
 albumentations==0.4.1
 pretrainedmodels==0.7.4
 pandas==0.24.2
+tensorboard==2.0.2

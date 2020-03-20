@@ -2,6 +2,8 @@ from datetime import datetime
 
 import pretrainedmodels
 import torch
+import shutil
+from pathlib import Path
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
 from catalyst.dl.runner import SupervisedRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
@@ -27,7 +29,9 @@ def main():
     prepare_cudnn(deterministic=True)
 
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-    log_dir = config.LOG_ROOT / f"tubles_{config.DATA_DIR.stem}_{config.MODE}_{current_time}"
+    log_dir = Path(f"{config.LOG_DIR}_{current_time}") if config.WITH_TIMESTAMP else config.LOG_DIR
+    log_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(config.__file__, str(log_dir))
     df_with_labels, class_names, num_classes = get_data(config.DATA_DIR, config.MODE)
 
     train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO 100 of each class for test
