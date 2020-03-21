@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pretrainedmodels
 import torch
+import argparse
 import shutil
 from pathlib import Path
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
@@ -27,7 +28,6 @@ def get_model(model_name: str, num_classes: int, pretrained: str = "imagenet"):
 def main():
     set_global_seed(config.SEED)
     prepare_cudnn(deterministic=True)
-
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
     log_dir = Path(f"{config.LOG_DIR}_{current_time}") if config.WITH_TIMESTAMP else config.LOG_DIR
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -82,5 +82,16 @@ def main():
     )
 
 
+def get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--config_path', type=Path, required=True)
+    return parser
+
+
 if __name__ == '__main__':
+    parser = get_parser()
+    args = parser.parse_known_args()[0]
+    shutil.copy2(args.config_path, config.__file__)
+
     main()

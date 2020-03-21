@@ -54,7 +54,7 @@ HTTP_AUTH?=--http-auth
 TRAIN_STREAM_LOGS?=yes
 
 # Command to run training inside the environment. Example:
-TRAIN_CMD?=python -u $(CODE_DIR)/train.py
+TRAIN_CMD?=python -u $(CODE_DIR)/train.py --config_path $(PROJECT_PATH_ENV)/$(CONFIG_DIR)/config.sample.py
 
 LOCAL_PORT?=1489
 
@@ -309,7 +309,7 @@ train: _check_setup upload-code upload-config   ### Run a training job (set up e
 		--preset $(PRESET) \
 		$(TRAIN_WAIT_START_OPTION) \
 		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
-		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):ro \
+		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
 		--volume $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR):$(PROJECT_PATH_ENV)/$(RESULTS_DIR):rw \
 		--env PYTHONPATH=$(PROJECT_PATH_ENV) \
