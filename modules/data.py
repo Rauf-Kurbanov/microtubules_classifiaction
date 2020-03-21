@@ -6,18 +6,19 @@ from albumentations import Compose
 from albumentations import LongestMaxSize, PadIfNeeded
 from albumentations import Normalize
 from albumentations import ShiftScaleRotate, IAAPerspective, RandomBrightnessContrast, \
-    RandomGamma, \
-    HueSaturationValue, JpegCompression, ImageCompression
-from albumentations.pytorch import ToTensor, ToTensorV2
+    RandomGamma, HueSaturationValue, ImageCompression
+from albumentations.pytorch import ToTensorV2
 from catalyst.data import ImageReader
 from catalyst.data.augmentor import Augmentor
 from catalyst.data.reader import ScalarReader, ReaderCompose
 from catalyst.dl import utils
 from catalyst.dl.utils import get_loader
-from catalyst.utils.dataset import create_dataset, create_dataframe, \
-    prepare_dataset_labeling
+from catalyst.utils import get_dataset_labeling
+from catalyst.utils.dataset import create_dataset, create_dataframe
 from catalyst.utils.pandas import map_dataframe
 from torchvision import transforms
+
+from modules.utils import Mode
 
 BORDER_CONSTANT = 0
 BORDER_REFLECT = 2
@@ -111,7 +112,7 @@ def get_loaders(*,
         TifImageReader(
             input_key="filepath",
             output_key="features",
-            datapath=data_dir
+            rootpath=data_dir
         ),
 
         ScalarReader(
@@ -160,16 +161,38 @@ def get_loaders(*,
     return loaders
 
 
-def get_data(data_dir):
+def _get_data(data_dir):
     dataset = create_dataset(dirs=f"{data_dir}/*", extension="*.tif")
-
     df = create_dataframe(dataset, columns=["class", "filepath"])
-    tag_to_label = prepare_dataset_labeling(df, "class")
+    tag_to_label = get_dataset_labeling(df, "class")
     df_with_labels = map_dataframe(df, tag_column="class", class_column="label",
                                    tag2class=tag_to_label, verbose=True)
 
     class_names = [name for name, id_ in
                    sorted(tag_to_label.items(), key=lambda x: x[1])]
     num_classes = len(tag_to_label)
+
+    return df_with_labels, class_names, num_classes
+
+
+def get_data(data_dir, mode):
+    df_with_labels, class_names, num_classes = _get_data(data_dir)
+    if mode is Mode.ZERO_VS_ZERO_ONE:
+        df_with_labels.loc[df_with_labels["class"] == "Control", "label"] = 0
+        df_with_labels.loc[df_with_labels["class"] == "01Taxol", "label"] = 1
+        df_with_labels = df_with_labels[df_with_labels['class'] != "1Taxol"]
+        return df_with_labels, ["Control", "01Taxol"], 2
+
+    if mode is Mode.ZERO_VS_ONE:
+        df_with_labels.loc[df_with_labels["class"] == "Control", "label"] = 0
+        df_with_labels.loc[df_with_labels["class"] == "1Taxol", "label"] = 1
+        df_with_labels = df_with_labels[df_with_labels['class'] != "01Taxol"]
+        return df_with_labels, ["Control", "1Taxol"], 2
+
+    if mode is Mode.ZERO_ONE_VS_ONE:
+        df_with_labels.loc[df_with_labels["class"] == "01Taxol", "label"] = 0
+        df_with_labels.loc[df_with_labels["class"] == "1Taxol", "label"] = 1
+        df_with_labels = df_with_labels[df_with_labels['class'] != "Control"]
+        return df_with_labels, ["01Taxol", "1Taxol"], 2
 
     return df_with_labels, class_names, num_classes

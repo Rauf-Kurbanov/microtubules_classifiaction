@@ -1,12 +1,30 @@
-import os
+from enum import Enum
 from pathlib import Path
 from typing import List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import pretrainedmodels
 import torch
+from torch import nn
 from torch.nn.functional import softmax
+
+
+class Mode(Enum):
+    ZERO_VS_ZERO_ONE = 0
+    ZERO_VS_ONE = 1
+    ZERO_ONE_VS_ONE = 2
+    ZERO_VS_ZERO_ONE_VS_ONE = 3
+
+
+def get_model(model_name: str, num_classes: int, pretrained: str = "imagenet"):
+    model_fn = pretrainedmodels.__dict__[model_name]
+    model = model_fn(num_classes=1000, pretrained=pretrained)
+
+    dim_feats = model.last_linear.in_features
+    model.last_linear = nn.Linear(dim_feats, num_classes)
+
+    return model
 
 
 def show_examples(images: List[Tuple[str, np.ndarray]]):
