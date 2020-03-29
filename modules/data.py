@@ -7,7 +7,7 @@ from albumentations import LongestMaxSize, PadIfNeeded
 from albumentations import Normalize
 from albumentations import ShiftScaleRotate, IAAPerspective, RandomBrightnessContrast, \
     RandomGamma, HueSaturationValue, ImageCompression
-from albumentations.pytorch import ToTensorV2
+from albumentations.pytorch import ToTensorV2, ToTensor
 from catalyst.data import ImageReader
 from catalyst.data.augmentor import Augmentor
 from catalyst.data.reader import ScalarReader, ReaderCompose
@@ -100,14 +100,34 @@ def get_transforms():
     return train_data_transforms, valid_data_transforms
 
 
+def get_frozen_transforms():
+    valid_transforms = compose([pre_transforms(), post_transforms()])
+
+    train_data_transforms = transforms.Compose([
+        Augmentor(
+            dict_key="features",
+            augment_fn=lambda x: valid_transforms(image=x)["image"]
+        )
+    ])
+
+    valid_data_transforms = transforms.Compose([
+        Augmentor(
+            dict_key="features",
+            augment_fn=lambda x: valid_transforms(image=x)["image"]
+        )
+    ])
+
+    return train_data_transforms, valid_data_transforms
+
+
 def get_loaders(*,
                 data_dir,
                 train_data, valid_data,
                 num_classes,
                 batch_size: int = 64,
                 num_workers: int = 4,
-                sampler=None
-                ) -> collections.OrderedDict:
+                sampler=None,
+                transforms=None) -> collections.OrderedDict:
     open_fn = ReaderCompose([
         TifImageReader(
             input_key="filepath",
@@ -131,7 +151,10 @@ def get_loaders(*,
         )
     ])
 
-    train_data_transforms, valid_data_transforms = get_transforms()
+    if transforms is None:
+        train_data_transforms, valid_data_transforms = get_transforms()
+    else:
+        train_data_transforms, valid_data_transforms = transforms
 
     train_loader = get_loader(
         train_data,
