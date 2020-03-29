@@ -270,17 +270,21 @@ develop: _check_setup upload-code upload-config upload-notebooks  ### Run a deve
 		--name $(DEVELOP_JOB) \
 		--description "$(PROJECT_ID):develop" \
 		--preset $(PRESET) \
+		--http 8888 \
+		$(HTTP_AUTH) \
+		--browse \
 		--detach \
 		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
 		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
 		--volume $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR):$(PROJECT_PATH_ENV)/$(RESULTS_DIR):rw \
+		--volume $(PROJECT_PATH_STORAGE)/$(NOTEBOOKS_DIR):$(PROJECT_PATH_ENV)/$(NOTEBOOKS_DIR):rw \
 		--env PYTHONPATH=$(PROJECT_PATH_ENV) \
 		--env EXPOSE_SSH=yes \
 		--env JOB_TIMEOUT=1d \
 		$(OPTION_GCP_CREDENTIALS) $(OPTION_AWS_CREDENTIALS) $(OPTION_WANDB_CREDENTIALS) \
 		$(CUSTOM_ENV_NAME) \
-		sleep infinity
+		jupyter $(JUPYTER_MODE) --no-browser --ip=0.0.0.0 --allow-root --NotebookApp.token= --notebook-dir=$(PROJECT_PATH_ENV)
 
 .PHONY: connect-develop
 connect-develop:  ### Connect to the remote shell running on the development job
@@ -302,6 +306,8 @@ kill-develop:  ### Terminate the development job
 RUN?=base
 
 .PHONY: train
+train: CONFIG_NAME=config.sample.py
+train: TRAIN_CMD=python -u $(CODE_DIR)/train.py --config_path $(PROJECT_PATH_ENV)/$(CONFIG_DIR)/$(CONFIG_NAME)
 train: _check_setup upload-code upload-config   ### Run a training job (set up env var 'RUN' to specify the training job),
 	$(NEURO) run \
 		--name $(TRAIN_JOB)-$(RUN) \
@@ -401,7 +407,7 @@ jupyter: _check_setup upload-config upload-code upload-notebooks ### Run a job w
 		$(HTTP_AUTH) \
 		--browse \
 		--detach \
-		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
+		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
 		--volume $(PROJECT_PATH_STORAGE)/$(NOTEBOOKS_DIR):$(PROJECT_PATH_ENV)/$(NOTEBOOKS_DIR):rw \
