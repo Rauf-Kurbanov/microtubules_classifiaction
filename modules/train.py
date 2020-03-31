@@ -7,7 +7,7 @@ import pretrainedmodels
 import torch
 import wandb
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
-from catalyst.dl.runner import SupervisedRunner
+from catalyst.dl.runner import SupervisedWandbRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
@@ -41,7 +41,12 @@ def main():
     run_name = f"{config.DATA_DIR.stem}_{config.MODE.name}_{frozen_tag}_{timestamp}"
 
     log_dir = Path(config.LOG_ROOT / run_name)
-    wandb.init(project="microtubules_classifiaction", sync_tensorboard=True, name=run_name)
+    wandb.init(project="microtubules_classification", name=run_name)
+    wandb.config.batch_size = config.BATCH_SIZE
+    wandb.config.data = config.DATA_DIR.name
+    wandb.config.mode = config.MODE.name
+    wandb.config.frozen = True
+    wandb.config.seed = config.SEED
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
@@ -49,8 +54,7 @@ def main():
 
     train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO 100 of each class for test
                                                         random_state=config.SEED)
-    print("Train size:", train_data.shape[0])  # TODO
-    print("Valid size:", valid_data.shape[0])
+    wandb.config.update({"train_size": train_data.shape[0], "valid_size": valid_data.shape[0]})
 
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
         'records')
@@ -59,18 +63,21 @@ def main():
                           train_data=train_data,
                           valid_data=valid_data,
                           num_classes=num_classes,
-                          num_workers=4)
+                          num_workers=4,
+                          batch_size=config.BATCH_SIZE)
 
     model_name = "resnet18"
     model = get_model(model_name, num_classes, frozen_encoder=config.FROZEN)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0003)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=[9], gamma=0.3  # TODO milestones ??
-    )
-
-    runner = SupervisedRunner(device=config.DEVICE)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.0003)
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(
+    #     optimizer, milestones=[9], gamma=0.3  # TODO milestones ??
+    # )
+    optimizer = torch.optim.Adam(model.parameters())
+    scheduler = None
+    # runner = SupervisedRunner(device=config.DEVICE)
+    runner = SupervisedWandbRunner(device=config.DEVICE)
 
     runner.train(
         model=model,

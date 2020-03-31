@@ -1,3 +1,5 @@
+import io
+from copy import deepcopy
 from enum import Enum
 from pathlib import Path
 from typing import List, Tuple
@@ -6,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pretrainedmodels
 import torch
+from PIL import Image
 from torch import nn
 from torch.nn.functional import softmax
 
@@ -71,3 +74,13 @@ def show_prediction(
         for x, title, image in zip(predictions, titles, images)
     ]
     show_examples(images_predicted_classes)
+
+
+def fig_to_pil(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=200)
+    buf.seek(0)
+    pil_img = deepcopy(Image.open(buf))
+    buf.close()
+
+    return pil_img

@@ -1,17 +1,18 @@
 import itertools
 import re
+from collections import defaultdict
 from textwrap import wrap
 
+import matplotlib.pyplot as plt
 import numpy as np
+import wandb
 from catalyst.dl import Callback, CallbackOrder, State
 from matplotlib.figure import Figure
+from sklearn.decomposition import PCA
 from sklearn.metrics import confusion_matrix
 from torch.utils.tensorboard import SummaryWriter
 
-from modules.utils import Mode
-import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
-from collections import defaultdict
+from modules.utils import Mode, fig_to_pil
 
 
 class ConfusionMatrixCallback(Callback):
@@ -50,8 +51,9 @@ class ConfusionMatrixCallback(Callback):
     def on_epoch_end(self, state: State):
         f = self.plot_confusion_matrix(self.gts, self.preds, labels=self._class_names)
         self.logger.add_figure("confusion_matrix", f, global_step=state.global_epoch)
-        self.logger.flush()
 
+        self.logger.flush()
+        wandb.log({"confusion_matrix": [wandb.Image(fig_to_pil(f), caption="Label")]})
 
     @staticmethod
     def plot_confusion_matrix(correct_labels, predict_labels, labels, normalize=False):
@@ -134,6 +136,7 @@ class EmbedPlotCallback(Callback):
         f = self.plot_embeddings(val_epoch_embeds, val_epoch_targets)
         self.logger.add_figure("decomposition", f, global_step=state.global_epoch)
         self.logger.flush()
+        wandb.log({"decomposition":  [wandb.Image(fig_to_pil(f), caption="Label")]})
 
     def plot_embeddings(self, embeddings, targets, xlim=None, ylim=None):
         fig = plt.figure()
