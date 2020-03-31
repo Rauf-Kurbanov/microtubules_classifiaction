@@ -6,12 +6,17 @@ import argparse
 import shutil
 from pathlib import Path
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
-from catalyst.dl.runner import SupervisedRunner
+from catalyst.dl.runner import SupervisedRunner, SupervisedWandbRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
 
+from modules.callbacks import ConfusionMatrixCallback
 from modules.data import get_loaders, get_data, get_frozen_transforms
+from modules.utils import CustomInferCallback
+import wandb
+
+wandb.init(project="microtubules_classifiaction", sync_tensorboard=True)
 
 
 def get_model(model_name: str, num_classes: int, pretrained: str = "imagenet",
@@ -83,7 +88,8 @@ def main():
             F1ScoreCallback(
                 input_key="targets_one_hot",
                 activation="Softmax"
-            )
+            ),
+            ConfusionMatrixCallback(config.MODE)
         ],
         num_epochs=config.NUM_EPOCHS,
         verbose=True,
