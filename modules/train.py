@@ -1,22 +1,19 @@
+import argparse
+import shutil
 from datetime import datetime
+from pathlib import Path
 
 import pretrainedmodels
 import torch
-import argparse
-import shutil
-from pathlib import Path
+import wandb
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
-from catalyst.dl.runner import SupervisedRunner, SupervisedWandbRunner
+from catalyst.dl.runner import SupervisedRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
 
-from modules.callbacks import ConfusionMatrixCallback
-from modules.data import get_loaders, get_data, get_frozen_transforms
-from modules.utils import CustomInferCallback
-import wandb
-
-wandb.init(project="microtubules_classifiaction", sync_tensorboard=True)
+from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback
+from modules.data import get_loaders, get_data
 
 
 def get_model(model_name: str, num_classes: int, pretrained: str = "imagenet",
@@ -40,7 +37,11 @@ def main():
     prepare_cudnn(deterministic=True)
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
     frozen_tag = "FROZEN" if config.FROZEN else ""
-    log_dir = Path(f"{config.LOG_DIR}_{frozen_tag}_{current_time}") if config.WITH_TIMESTAMP else config.LOG_DIR
+    timestamp = str(current_time) if config.WITH_TIMESTAMP else ""
+    run_name = f"{config.DATA_DIR.stem}_{config.MODE.name}_{frozen_tag}_{timestamp}"
+
+    log_dir = Path(config.LOG_ROOT / run_name)
+    wandb.init(project="microtubules_classifiaction", sync_tensorboard=True, name=run_name)
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
@@ -48,7 +49,7 @@ def main():
 
     train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO 100 of each class for test
                                                         random_state=config.SEED)
-    print("Train size:", train_data.shape[0])
+    print("Train size:", train_data.shape[0])  # TODO
     print("Valid size:", valid_data.shape[0])
 
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
@@ -89,7 +90,8 @@ def main():
                 input_key="targets_one_hot",
                 activation="Softmax"
             ),
-            ConfusionMatrixCallback(config.MODE)
+            ConfusionMatrixCallback(config.MODE),
+            EmbedPlotCallback(config.MODE)
         ],
         num_epochs=config.NUM_EPOCHS,
         verbose=True,

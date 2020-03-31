@@ -10,6 +10,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from modules.utils import Mode
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from collections import defaultdict
 
 
 class ConfusionMatrixCallback(Callback):
@@ -47,25 +49,12 @@ class ConfusionMatrixCallback(Callback):
 
     def on_epoch_end(self, state: State):
         f = self.plot_confusion_matrix(self.gts, self.preds, labels=self._class_names)
-        self.logger.add_figure("confusion_matrix", f, global_step=state.global_step)
+        self.logger.add_figure("confusion_matrix", f, global_step=state.global_epoch)
         self.logger.flush()
 
 
     @staticmethod
     def plot_confusion_matrix(correct_labels, predict_labels, labels, normalize=False):
-        """
-        Parameters:
-            correct_labels                  : These are your true classification categories.
-            predict_labels                  : These are you predicted classification categories
-            labels                          : This is a lit of labels which will be used to display the axix labels
-
-        Returns:
-            summary: TensorFlow summary
-
-        Other itema to note:
-            - Depending on the number of category and the data , you may have to modify the figzie, font sizes etc.
-            - Currently, some of the ticks dont line up due to rotations.
-        """
         cm = confusion_matrix(correct_labels, predict_labels, labels=labels)
         if normalize:
             cm = cm.astype('float')*10 / cm.sum(axis=1)[:, np.newaxis]
@@ -73,10 +62,8 @@ class ConfusionMatrixCallback(Callback):
             cm = cm.astype('int')
 
         np.set_printoptions(precision=2)
-        ###fig, ax = matplotlib.figure.Figure()
-
         # fig = matplotlib.figure.Figure(figsize=(7, 7), dpi=320, facecolor='w', edgecolor='k')
-        fig = Figure(figsize=(4, 4), dpi=200, facecolor='w', edgecolor='k')
+        fig = Figure(facecolor='w', edgecolor='k')
         ax = fig.add_subplot(1, 1, 1)
         im = ax.imshow(cm, cmap='Oranges')
 
@@ -100,7 +87,6 @@ class ConfusionMatrixCallback(Callback):
         for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
             ax.text(j, i, format(cm[i, j], 'd') if cm[i,j]!=0 else '.', horizontalalignment="center", fontsize=6, verticalalignment='center', color= "black")
         fig.set_tight_layout(True)
-        # summary = tfplot.figure.to_summary(fig, tag=tensor_name)
         return fig
 
 
@@ -113,14 +99,46 @@ class EmbedPlotCallback(Callback):
                          Mode.ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol"],
                          Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["Control", "01Taxol", "1Taxol"]}
         self._class_names = mode_to_class[mode]
+        self._n_classes = len(self._class_names)
         self._colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
                         '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
                         '#bcbd22', '#17becf']
+        self._pca = PCA()
+
+    def on_loader_start(self, state):
+        """Prepare tensorboard writers for the current stage"""
+        if state.logdir is None:
+            return
+
+        lm = state.loader_name
+        log_dir = state.logdir / f"{lm}_log"
+        self.logger = SummaryWriter(log_dir)
+
+    def on_epoch_start(self, state: State):
+        self.batch_outs = defaultdict(list)
+        self.targets = defaultdict(list)
+
+    def on_batch_end(self, state: State):
+        ln = state.loader_name
+        self.batch_outs[ln].append(state.batch_out["logits"].cpu().detach().numpy())
+        self.targets[ln].append(state.batch_in['targets'].cpu().numpy())
+
+    def on_epoch_end(self, state: State):
+        train_epoch_out = np.concatenate(self.batch_outs["train"])
+        self._pca.fit(train_epoch_out)
+
+        val_epoch_out = np.concatenate(self.batch_outs["valid"])
+        val_epoch_targets = np.concatenate(self.targets["valid"])
+        val_epoch_embeds = self._pca.transform(val_epoch_out)
+
+        f = self.plot_embeddings(val_epoch_embeds, val_epoch_targets)
+        self.logger.add_figure("decomposition", f, global_step=state.global_epoch)
+        self.logger.flush()
 
     def plot_embeddings(self, embeddings, targets, xlim=None, ylim=None):
-        # plt.figure(figsize=(10, 10))
-        fig, ax = plt.figure(figsize=(10, 10))
-        for i in range(10):
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        for i in range(self._n_classes):
             inds = np.where(targets == i)[0]
             ax.scatter(embeddings[inds, 0], embeddings[inds, 1], alpha=0.5, color=self._colors[i])
         if xlim:
