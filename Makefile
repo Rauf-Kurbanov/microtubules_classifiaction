@@ -21,7 +21,6 @@ PROJECT_POSTFIX?=microtubules-classifiaction
 SETUP_JOB?=setup-$(PROJECT_POSTFIX)
 TRAIN_JOB?=train-$(PROJECT_POSTFIX)
 DEVELOP_JOB?=develop-$(PROJECT_POSTFIX)
-JUPYTER_JOB?=jupyter-$(PROJECT_POSTFIX)
 TENSORBOARD_JOB?=tensorboard-$(PROJECT_POSTFIX)
 FILEBROWSER_JOB?=filebrowser-$(PROJECT_POSTFIX)
 
@@ -276,7 +275,7 @@ develop: _check_setup upload-code upload-config upload-notebooks  ### Run a deve
 		--detach \
 		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
 		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
-		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
+		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR):$(PROJECT_PATH_ENV)/$(RESULTS_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(NOTEBOOKS_DIR):$(PROJECT_PATH_ENV)/$(NOTEBOOKS_DIR):rw \
 		--env PYTHONPATH=$(PROJECT_PATH_ENV) \
@@ -333,61 +332,6 @@ endif
 kill-train:  ### Terminate the training job (set up env var 'RUN' to specify the training job)
 	$(NEURO) kill $(TRAIN_JOB)-$(RUN) || :
 
-# Number of hyper-parameter search jobs
-N_HYPERPARAM_JOBS?=3
-
-.PHONY: hypertrain
-hypertrain: _check_setup wandb-check-auth   ### Run jobs in parallel for hyperparameters search using W&B
-	@echo "Initializing local wandb using config file './$(WANDB_SECRET_PATH_LOCAL)'"
-	@wandb login `cat "./$(WANDB_SECRET_PATH_LOCAL)"`
-	echo "Creating W&B Sweep..."
-	echo "Using variable: WANDB_SWEEP_CONFIG_FILE='$(WANDB_SWEEP_CONFIG_FILE)'"
-	@[ -f "$(WANDB_SWEEP_CONFIG_PATH)" ] \
-		&& echo "Using W&B sweep file: ./$(WANDB_SWEEP_CONFIG_PATH)" \
-		|| { echo "ERROR: W&B sweep config file not found: '$$PWD/$(WANDB_SWEEP_CONFIG_PATH)'" >&2; false; }
-	WANDB_PROJECT=$(PROJECT_POSTFIX) wandb sweep $(WANDB_SWEEP_CONFIG_PATH) 2>&1 | tee /proc/self/fd/2 | grep 'Created sweep with ID: ' | awk 'NF{ print $$NF }' >> $(WANDB_SWEEPS_FILE)
-	@echo "Sweep created and saved to '$(WANDB_SWEEPS_FILE)'"
-	@echo "Updating code and config directories on Neuro Storage..."
-	$(NEURO) cp --recursive --update --no-target-directory $(CODE_DIR) $(PROJECT_PATH_STORAGE)/$(CODE_DIR)
-	$(NEURO) cp --recursive --update --no-target-directory $(CONFIG_DIR) $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)
-	@echo "Uploading wandb config file './wandb/settings' to Neuro Storage..."
-	$(NEURO) mkdir -p $(PROJECT_PATH_STORAGE)/wandb
-	$(NEURO) cp ./wandb/settings $(PROJECT_PATH_STORAGE)/wandb/
-	sweep=`tail -1 $(WANDB_SWEEPS_FILE)` && \
-	$(NEURO) mkdir -p $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR)/sweep-$$sweep && \
-	echo "Running $(N_HYPERPARAM_JOBS) jobs of sweep '$$sweep'..." && \
-	for index in `seq 1 $(N_HYPERPARAM_JOBS)` ; do \
-		echo -e "\nStarting job $$index..." ; \
-		$(NEURO) run \
-			--name $(TRAIN_JOB)-$$sweep-$$index \
-			--description "$(PROJECT_ID):train:$$sweep" \
-			--preset $(PRESET) \
-			--detach \
-			--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
-			--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):ro \
-			--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
-			--volume $(PROJECT_PATH_STORAGE)/sweep-$$sweep:$(PROJECT_PATH_ENV)/sweep-$$sweep:rw \
-			--volume $(PROJECT_PATH_STORAGE)/wandb:$(PROJECT_PATH_ENV)/wandb:rw \
-			--env PYTHONPATH=$(PROJECT_PATH_ENV) \
-			--env EXPOSE_SSH=yes \
-			--env JOB_TIMEOUT=0 \
-			$(OPTION_GCP_CREDENTIALS) $(OPTION_AWS_CREDENTIALS) $(OPTION_WANDB_CREDENTIALS) \
-			$(CUSTOM_ENV_NAME) \
-			bash -c "export WANDB_PROJECT=$(PROJECT_POSTFIX) && cd $(PROJECT_PATH_ENV) && wandb status && wandb agent $$sweep"; \
-	done; \
-	echo -e "\nStarted $(N_HYPERPARAM_JOBS) hyper-parameter search jobs of sweep '$$sweep'.\nUse 'neuro ps' and 'neuro status <job>' to check."
-
-.PHONY: kill-hypertrain-all
-kill-hypertrain-all:  ### Terminate all hyper-parameter search training jobs of all the sweeps
-	@[ ! -f "$(WANDB_SWEEPS_FILE)" ] && echo "File '$(WANDB_SWEEPS_FILE)' does not exist. Abort." || { \
-		for sweep in `tac $(WANDB_SWEEPS_FILE)`; do \
-			jobs=`neuro --quiet ps --description="$(PROJECT_ID):train:$$sweep"` && \
-			echo "Killing jobs of the sweep '$$sweep'..." && \
-			$(NEURO) kill $${jobs:-placeholder} ||: ; \
-		done; \
-		echo "Please remove unused sweeps from the file '$(WANDB_SWEEPS_FILE)'." ; \
-	}
-
 .PHONY: kill-train-all
 kill-train-all:  ### Terminate all training jobs you have submitted
 	jobs=`neuro --quiet ps --description="$(PROJECT_ID):train" | tr -d "\r"` && \
@@ -398,43 +342,14 @@ connect-train: _check_setup  ### Connect to the remote shell running on the trai
 	$(NEURO) exec --no-key-check $(TRAIN_JOB)-$(RUN) bash
 
 .PHONY: jupyter
-jupyter: _check_setup upload-config upload-code upload-notebooks ### Run a job with Jupyter Notebook and open UI in the default browser
-	$(NEURO) run \
-		--name $(JUPYTER_JOB) \
-		--description "$(PROJECT_ID):jupyter" \
-		--preset $(PRESET) \
-		--http 8888 \
-		$(HTTP_AUTH) \
-		--browse \
-		--detach \
-		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):rw \
-		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
-		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
-		--volume $(PROJECT_PATH_STORAGE)/$(NOTEBOOKS_DIR):$(PROJECT_PATH_ENV)/$(NOTEBOOKS_DIR):rw \
-		--volume $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR):$(PROJECT_PATH_ENV)/$(RESULTS_DIR):rw \
-		--env JOB_TIMEOUT=1d \
-		--env PYTHONPATH=$(PROJECT_PATH_ENV) \
-		$(OPTION_GCP_CREDENTIALS) $(OPTION_AWS_CREDENTIALS) $(OPTION_WANDB_CREDENTIALS) \
-		$(CUSTOM_ENV_NAME) \
-		jupyter $(JUPYTER_MODE) --no-browser --ip=0.0.0.0 --allow-root --NotebookApp.token= --notebook-dir=$(PROJECT_PATH_ENV)
-
-.PHONY: kill-jupyter
-kill-jupyter:  ### Terminate the job with Jupyter Notebook
-	$(NEURO) kill $(JUPYTER_JOB) || :
-
-.PHONY: jupyterlab
-jupyterlab:  ### Run a job with JupyterLab and open UI in the default browser
-	@make --silent jupyter JUPYTER_MODE=lab
-
-.PHONY: kill-jupyterlab
-kill-jupyterlab:  ### Terminate the job with JupyterLab
-	@make --silent kill-jupyter
+jupyter:
+	$(NEURO) job browse $(DEVELOP_JOB) || :
 
 .PHONY: tensorboard
 tensorboard: _check_setup  ### Run a job with TensorBoard and open UI in the default browser
 	$(NEURO) run \
 		--name $(TENSORBOARD_JOB) \
-		--preset cpu-small \
+		--preset cpu-large \
 		--description "$(PROJECT_ID):tensorboard" \
 		--http 6006 \
 		$(HTTP_AUTH) \
@@ -467,7 +382,7 @@ kill-filebrowser:  ### Terminate the job with File Browser
 	$(NEURO) kill $(FILEBROWSER_JOB) || :
 
 .PHONY: kill-all
-kill-all: kill-develop kill-train-all kill-hypertrain-all kill-jupyter kill-tensorboard kill-filebrowser kill-setup  ### Terminate all jobs of this project
+kill-all: kill-develop kill-train-all kill-tensorboard kill-filebrowser kill-setup  ### Terminate all jobs of this project
 
 ##### LOCAL #####
 
