@@ -5,15 +5,13 @@ from pathlib import Path
 
 import torch
 import wandb
-from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
 from catalyst.dl.runner import SupervisedWandbRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
-from torch import nn
 
-from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback
-from modules.data import get_loaders, get_data
-from modules.models import ClassificationNet, ResNetEncoder
+from modules.data import get_data, get_loaders_siamese
+from modules.losses import ContrastiveLoss
+from modules.models import ResNetEncoder, SiameseNet
 
 
 def main():
@@ -47,22 +45,17 @@ def main():
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
         'records')
 
-    loaders = get_loaders(data_dir=config.DATA_DIR,
-                          train_data=train_data,
-                          valid_data=valid_data,
-                          num_classes=num_classes,
-                          num_workers=4,
-                          batch_size=config.BATCH_SIZE,
-                          transforms=config.TRANSFORMS)
+    loaders = get_loaders_siamese(data_dir=config.DATA_DIR,
+                                  train_data=train_data,
+                                  valid_data=valid_data,
+                                  batch_size=config.BATCH_SIZE,
+                                  num_workers=4,
+                                  transforms=config.TRANSFORMS)
 
-    if config.SIAMESE_CKPT:
-        encoder = ResNetEncoder.from_siamese_ckpt(config.SIAMESE_CKPT)
-    else:
-        encoder = ResNetEncoder(frozen=config.FROZEN)
+    encoder = ResNetEncoder(pretrained=False)
+    model = SiameseNet(encoder)
 
-    model = ClassificationNet(embed_net=encoder,
-                              n_classes=num_classes)
-    criterion = nn.CrossEntropyLoss()
+    criterion = ContrastiveLoss(margin=1.)
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = None
     runner = SupervisedWandbRunner(device=config.DEVICE)
@@ -74,24 +67,8 @@ def main():
         optimizer=optimizer,
         scheduler=scheduler,
         loaders=loaders,
-        callbacks=[
-            AccuracyCallback(num_classes=num_classes),
-            AUCCallback(
-                num_classes=num_classes,
-                input_key="targets_one_hot",
-                class_names=class_names
-            ),
-            F1ScoreCallback(
-                input_key="targets_one_hot",
-                activation="Softmax"
-            ),
-            ConfusionMatrixCallback(config.MODE),
-            EmbedPlotCallback(config.MODE)
-        ],
         num_epochs=config.NUM_EPOCHS,
         verbose=True,
-        main_metric=config.MAIN_METRIC,
-        minimize_metric=False,
         fp16={"apex": False}
     )
 
@@ -106,7 +83,6 @@ if __name__ == '__main__':
     parser = get_parser()
     args = parser.parse_known_args()[0]
 
-    shutil.copy2(args.config_path, "/project/modules/config.py")
-    # shutil.copy2(args.config_path, "/Users/raufkurbanov/Programs/microtubules_classifiaction/modules/config.py")
+    shutil.copy2(args.config_path, "/project/modules/config.py")  # TODO
 
     main()

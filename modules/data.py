@@ -15,8 +15,7 @@ from catalyst.data.reader import ScalarReader, ReaderCompose
 from catalyst.dl import utils
 from catalyst.dl.utils import get_loader
 from catalyst.utils import get_dataset_labeling
-from catalyst.utils.dataset import create_dataset, create_dataframe
-from catalyst.utils.pandas import map_dataframe
+from catalyst.utils import create_dataset, create_dataframe, map_dataframe
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -281,7 +280,10 @@ class SiameseDataset(Dataset):
         if self.transform is not None:
             img1 = self.transform(img1)
             img2 = self.transform(img2)
-        return {"img1": img1, "img2": img2, "target": target}
+
+        img1 = img1["features"]  # TODO
+        img2 = img2["features"]  # TODO
+        return {"features": (img1, img2), "targets": target}
 
     def __len__(self):
         return len(self.filepaths)
