@@ -160,8 +160,9 @@ _check_setup:
 ##### STORAGE #####
 
 .PHONY: upload-code
+upload-code: TO_CODE_DIR=$(CODE_DIR)
 upload-code: _check_setup  ### Upload code directory to the platform storage
-	$(NEURO) cp --recursive --update --no-target-directory $(CODE_DIR) $(PROJECT_PATH_STORAGE)/$(CODE_DIR)
+	$(NEURO) cp --recursive --update --no-target-directory $(CODE_DIR) $(PROJECT_PATH_STORAGE)/$(TO_CODE_DIR)
 
 .PHONY: download-code
 download-code: _check_setup  ### Download code directory from the platform storage
@@ -184,8 +185,9 @@ clean-data: _check_setup  ### Delete data directory from the platform storage
 	$(NEURO) rm --recursive $(DATA_DIR_STORAGE)/*
 
 .PHONY: upload-config
+upload-config: TO_CONFIG_DIR=$(CONFIG_DIR)
 upload-config: _check_setup  ### Upload config directory to the platform storage
-	$(NEURO) cp --recursive --update --no-target-directory $(CONFIG_DIR) $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)
+	$(NEURO) cp --recursive --update --no-target-directory $(CONFIG_DIR) $(PROJECT_PATH_STORAGE)/$(TO_CONFIG_DIR)
 
 .PHONY: download-config
 download-config: _check_setup  ### Download config directory from the platform storage
@@ -305,8 +307,11 @@ kill-develop:  ### Terminate the development job
 RUN?=base
 
 .PHONY: train
-train: CONFIG_NAME=config.sample.py
-train: TRAIN_CMD=python -u $(CODE_DIR)/train.py --config_path $(PROJECT_PATH_ENV)/$(CONFIG_DIR)/$(CONFIG_NAME)
+train: CONFIG_NAME=remote_config.sample.py
+train: ENTRYPOINT=train.py
+train: CODE_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CODE_DIR)
+train: CONFIG_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)
+train: TRAIN_CMD=python -u $(CODE_DIR)/$(ENTRYPOINT) --config_path $(PROJECT_PATH_ENV)/$(CONFIG_DIR)/$(CONFIG_NAME)
 train: _check_setup upload-code upload-config   ### Run a training job (set up env var 'RUN' to specify the training job),
 	$(NEURO) run \
 		--name $(TRAIN_JOB)-$(RUN) \
@@ -314,8 +319,8 @@ train: _check_setup upload-code upload-config   ### Run a training job (set up e
 		--preset $(PRESET) \
 		$(TRAIN_WAIT_START_OPTION) \
 		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
-		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
-		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
+		--volume $(CODE_FROM_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
+		--volume $(CONFIG_FROM_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):ro \
 		--volume $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR):$(PROJECT_PATH_ENV)/$(RESULTS_DIR):rw \
 		--env PYTHONPATH=$(PROJECT_PATH_ENV) \
 		--env EXPOSE_SSH=yes \
@@ -327,6 +332,16 @@ ifeq ($(TRAIN_STREAM_LOGS), yes)
 	@echo "Streaming logs of the job $(TRAIN_JOB)-$(RUN)"
 	$(NEURO) exec --no-key-check -T $(TRAIN_JOB)-$(RUN) "tail -f /output" || echo -e "Stopped streaming logs.\nUse 'neuro logs <job>' to see full logs."
 endif
+
+.PHONY: train-2
+train-2: NEW_CONFIG_NAME=$(CODE_DIR)-2
+train-2: SEED:=$(shell bash -c 'echo $$RANDOM')
+train-2:
+	make upload-code TO_CODE_DIR=$(CODE_DIR)-$(SEED)
+	make upload-config TO_CONFIG_DIR=$(CONFIG_DIR)-$(SEED)
+	make train CODE_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CODE_DIR)-$(SEED) CONFIG_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)-$(SEED)
+	$(NEURO) rm -r $(PROJECT_PATH_STORAGE)/$(CODE_DIR)-$(SEED)
+	$(NEURO) rm -r $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)-$(SEED)
 
 .PHONY: kill-train
 kill-train:  ### Terminate the training job (set up env var 'RUN' to specify the training job)

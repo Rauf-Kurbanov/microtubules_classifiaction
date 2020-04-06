@@ -2,7 +2,6 @@ from pathlib import Path
 
 import torch
 
-from modules.data import get_transforms, get_frozen_transforms
 from modules.utils import Mode
 
 SEED = 42
@@ -16,5 +15,7 @@ MAIN_METRIC = "accuracy01"  # "auc/_mean"
 
 NUM_EPOCHS = 1
 DEVICE = torch.device("cpu")
+N_WORKERS = 1
 BATCH_SIZE = 64
-TRANSFORMS = get_frozen_transforms()
+WITH_AUGS = True
+DEBUG = True

@@ -9,7 +9,7 @@ from catalyst.dl.runner import SupervisedWandbRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 
-from modules.data import get_data, get_loaders_siamese
+from modules.data import get_data, get_loaders_siamese, get_transforms, get_frozen_transforms
 from modules.losses import ContrastiveLoss
 from modules.models import ResNetEncoder, SiameseNet
 
@@ -34,9 +34,7 @@ def main():
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
-    print("Data dir", config.DATA_DIR)
     df_with_labels, class_names, num_classes = get_data(config.DATA_DIR, config.MODE)
-    print("Dataset size", df_with_labels.shape[0])
 
     train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO 100 of each class for test
                                                         random_state=config.SEED)
@@ -49,7 +47,7 @@ def main():
                                   train_data=train_data,
                                   valid_data=valid_data,
                                   batch_size=config.BATCH_SIZE,
-                                  num_workers=4,
+                                  num_workers=config.N_WORKERS,
                                   transforms=config.TRANSFORMS)
 
     encoder = ResNetEncoder(pretrained=False)
@@ -60,6 +58,7 @@ def main():
     scheduler = None
     runner = SupervisedWandbRunner(device=config.DEVICE)
 
+    transforms = get_transforms() if config.WITH_AUGS else get_frozen_transforms()
     runner.train(
         model=model,
         logdir=log_dir,
@@ -68,6 +67,7 @@ def main():
         scheduler=scheduler,
         loaders=loaders,
         num_epochs=config.NUM_EPOCHS,
+        transforms=transforms,
         verbose=True,
         fp16={"apex": False}
     )

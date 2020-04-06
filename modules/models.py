@@ -32,13 +32,18 @@ class ResNetEncoder(torch.nn.Module):  # TODO
         return x
 
     @staticmethod
-    def from_siamese_ckpt(ckpt_path):
-        encoder = ResNetEncoder(pretrained=False)
+    def from_siamese_ckpt(ckpt_path, frozen=False):
+        encoder = ResNetEncoder(pretrained=False, frozen=False)
         siamese_model = SiameseNet(encoder)
         state_dict = torch.load(ckpt_path)['model_state_dict']
         siamese_model.load_state_dict(state_dict)
 
-        return siamese_model.embedding_net
+        resnet = siamese_model.embedding_net
+
+        if frozen:
+            for param in resnet.parameters():
+                param.requires_grad = False
+        return resnet
 
 
 class SiameseNet(nn.Module):
