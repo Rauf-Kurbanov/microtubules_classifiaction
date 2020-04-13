@@ -35,11 +35,12 @@ def process_folder(some_tif, to_folder,
 
     for label in np.unique(labels):
         x0, x1, y0, y1 = bbox(labels == label)
-        crop = image[x0:x1, y0:y1]
+        crop = nimage[x0:x1, y0:y1]
         volume = (labels == label).sum()
 
         if volume > volume_trs:
-            pil_img = Image.fromarray(crop)
+            rgb_crop = cv2.cvtColor(crop, cv2.COLOR_GRAY2RGB)
+            pil_img = Image.fromarray(rgb_crop.astype(np.uint8))
             pil_img.save(to_folder / f'{some_tif.stem}_{label}.tif')
 
 
@@ -55,8 +56,8 @@ def process_dataset(from_folder, to_folder):
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--from_folder', type=Path, required=True)
-    parser.add_argument('--to_folder', type=Path, required=True)
+    parser.add_argument('--from_folder', type=Path, default=Path('../data/TaxolDataset'))
+    parser.add_argument('--to_folder', type=Path, default=Path('../data/Processed'))
 
     return parser
 
