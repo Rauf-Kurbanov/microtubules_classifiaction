@@ -317,6 +317,7 @@ train: _check_setup upload-code upload-config   ### Run a training job (set up e
 		--name $(TRAIN_JOB)-$(RUN) \
 		--description "$(PROJECT_ID):train" \
 		--preset $(PRESET) \
+		--wait-start \
 		$(TRAIN_WAIT_START_OPTION) \
 		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
 		--volume $(CODE_FROM_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
@@ -333,15 +334,14 @@ ifeq ($(TRAIN_STREAM_LOGS), yes)
 	$(NEURO) exec --no-key-check -T $(TRAIN_JOB)-$(RUN) "tail -f /output" || echo -e "Stopped streaming logs.\nUse 'neuro logs <job>' to see full logs."
 endif
 
-.PHONY: train-2
-train-2: NEW_CONFIG_NAME=$(CODE_DIR)-2
-train-2: SEED:=$(shell bash -c 'echo $$RANDOM')
-train-2:
-	make upload-code TO_CODE_DIR=$(CODE_DIR)-$(SEED)
-	make upload-config TO_CONFIG_DIR=$(CONFIG_DIR)-$(SEED)
-	make train CODE_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CODE_DIR)-$(SEED) CONFIG_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)-$(SEED)
-	$(NEURO) rm -r $(PROJECT_PATH_STORAGE)/$(CODE_DIR)-$(SEED)
-	$(NEURO) rm -r $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)-$(SEED)
+.PHONY: train-clean
+train-clean: SEED:=$(shell bash -c 'echo $$RANDOM')
+train-clean:
+	( make upload-config TO_CONFIG_DIR=$(CONFIG_DIR)-$(SEED); \
+	make upload-code TO_CODE_DIR=$(CODE_DIR)-$(SEED); \
+	make train CODE_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CODE_DIR)-$(SEED) CONFIG_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)-$(SEED); \
+	$(NEURO) rm -r $(PROJECT_PATH_STORAGE)/$(CODE_DIR)-$(SEED); \
+	$(NEURO) rm -r $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)-$(SEED) )
 
 .PHONY: kill-train
 kill-train:  ### Terminate the training job (set up env var 'RUN' to specify the training job)
