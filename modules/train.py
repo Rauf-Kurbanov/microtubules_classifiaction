@@ -3,7 +3,6 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-import pretrainedmodels
 import torch
 import wandb
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
@@ -13,21 +12,8 @@ from catalyst.utils import split_dataframe_train_test
 from torch import nn
 
 from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback
-from modules.data import get_loaders, get_data
-
-
-def get_model(model_name: str, num_classes: int, pretrained: str = "imagenet",
-              frozen_encoder=True):
-    model_fn = pretrainedmodels.__dict__[model_name]
-    model = model_fn(num_classes=1000, pretrained=pretrained)
-    if frozen_encoder:
-        for param in model.parameters():
-            param.requires_grad = False
-
-    dim_feats = model.last_linear.in_features
-    model.last_linear = nn.Linear(dim_feats, num_classes)
-
-    return model
+from modules.data import get_loaders, get_data, get_frozen_transforms, get_transforms
+from modules.models import ClassificationNet, ResNetEncoder
 
 
 def main():
@@ -43,40 +29,46 @@ def main():
     log_dir = Path(config.LOG_ROOT / run_name)
     wandb.init(project="microtubules_classification", name=run_name)
     wandb.config.batch_size = config.BATCH_SIZE
+    wandb.config.epochs = config.NUM_EPOCHS
     wandb.config.data = config.DATA_DIR.name
     wandb.config.mode = config.MODE.name
-    wandb.config.frozen = True
+    wandb.config.frozen = config.FROZEN
     wandb.config.seed = config.SEED
+    wandb.config.from_siamese = config.SIAMESE_CKPT is not None
+    wandb.config.with_augs = config.WITH_AUGS
+    wandb.config.debug = config.DEBUG
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
     df_with_labels, class_names, num_classes = get_data(config.DATA_DIR, config.MODE)
 
-    train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO 100 of each class for test
+    train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO
                                                         random_state=config.SEED)
     wandb.config.update({"train_size": train_data.shape[0], "valid_size": valid_data.shape[0]})
 
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
         'records')
 
+    transforms = get_transforms() if config.WITH_AUGS else get_frozen_transforms()
     loaders = get_loaders(data_dir=config.DATA_DIR,
                           train_data=train_data,
                           valid_data=valid_data,
                           num_classes=num_classes,
-                          num_workers=4,
-                          batch_size=config.BATCH_SIZE)
+                          num_workers=config.N_WORKERS,
+                          batch_size=config.BATCH_SIZE,
+                          transforms=transforms)
 
-    model_name = "resnet18"
-    model = get_model(model_name, num_classes, frozen_encoder=config.FROZEN)
+    if config.SIAMESE_CKPT:
+        encoder = ResNetEncoder.from_siamese_ckpt(config.SIAMESE_CKPT,
+                                                  frozen=config.FROZEN)
+    else:
+        encoder = ResNetEncoder(frozen=config.FROZEN)
 
+    model = ClassificationNet(embed_net=encoder,
+                              n_classes=num_classes)
     criterion = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.Adam(model.parameters(), lr=0.0003)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(
-    #     optimizer, milestones=[9], gamma=0.3  # TODO milestones ??
-    # )
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = None
-    # runner = SupervisedRunner(device=config.DEVICE)
     runner = SupervisedWandbRunner(device=config.DEVICE)
 
     runner.train(
@@ -117,6 +109,8 @@ def get_parser() -> argparse.ArgumentParser:
 if __name__ == '__main__':
     parser = get_parser()
     args = parser.parse_known_args()[0]
+
     shutil.copy2(args.config_path, "/project/modules/config.py")
+    # shutil.copy2(args.config_path, "/Users/raufkurbanov/Programs/microtubules_classifiaction/modules/config.py")
 
     main()

@@ -53,7 +53,8 @@ class ConfusionMatrixCallback(Callback):
         self.logger.add_figure("confusion_matrix", f, global_step=state.global_epoch)
 
         self.logger.flush()
-        wandb.log({"confusion_matrix": [wandb.Image(fig_to_pil(f), caption="Label")]})
+        wandb.log({"confusion_matrix": [wandb.Image(fig_to_pil(f), caption="Label")]},
+                  step=state.global_step)
 
     @staticmethod
     def plot_confusion_matrix(correct_labels, predict_labels, labels, normalize=False):
@@ -136,7 +137,8 @@ class EmbedPlotCallback(Callback):
         f = self.plot_embeddings(val_epoch_embeds, val_epoch_targets)
         self.logger.add_figure("decomposition", f, global_step=state.global_epoch)
         self.logger.flush()
-        wandb.log({"decomposition":  [wandb.Image(fig_to_pil(f), caption="Label")]})
+        wandb.log({"decomposition":  [wandb.Image(fig_to_pil(f), caption="Label")]},
+                  step=state.global_step)
 
     def plot_embeddings(self, embeddings, targets, xlim=None, ylim=None):
         fig = plt.figure()
