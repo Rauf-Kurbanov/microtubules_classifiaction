@@ -11,7 +11,7 @@ from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
 
-from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback
+from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback
 from modules.data import get_loaders, get_data, get_frozen_transforms, get_transforms
 from modules.models import ClassificationNet, ResNetEncoder
 
@@ -42,7 +42,7 @@ def main():
     shutil.copy2(config.__file__, str(log_dir))
     df_with_labels, class_names, num_classes = get_data(config.DATA_DIR, config.MODE)
 
-    train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,  # TODO
+    train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
                                                         random_state=config.SEED)
     wandb.config.update({"train_size": train_data.shape[0], "valid_size": valid_data.shape[0]})
 
@@ -90,7 +90,8 @@ def main():
                 activation="Softmax"
             ),
             ConfusionMatrixCallback(config.MODE),
-            EmbedPlotCallback(config.MODE)
+            EmbedPlotCallback(config.MODE),
+            MissCallback(config.MODE, origin_ds=config.ORIGIN_DATASET)
         ],
         num_epochs=config.NUM_EPOCHS,
         verbose=True,

@@ -35,7 +35,7 @@ class TifImageReader(ImageReader):
         image_name = str(row[self.input_key])
         img = plt.imread(image_name)
 
-        result = {self.output_key: img}
+        result = {self.output_key: img, 'original': img, 'name': image_name}
         return result
 
 
@@ -81,6 +81,7 @@ def compose(_transforms):
 
 
 def get_transforms():
+    no_transforms = compose([pre_transforms()])
     train_transforms = compose(
         [pre_transforms(), hard_transforms(), post_transforms()])
     valid_transforms = compose([pre_transforms(), post_transforms()])
@@ -89,6 +90,10 @@ def get_transforms():
         Augmentor(
             dict_key="features",
             augment_fn=lambda x: train_transforms(image=x)["image"]
+        ),
+        Augmentor(
+            dict_key="original",
+            augment_fn=lambda x: no_transforms(image=x)["image"]
         )
     ])
 
@@ -96,6 +101,10 @@ def get_transforms():
         Augmentor(
             dict_key="features",
             augment_fn=lambda x: valid_transforms(image=x)["image"]
+        ),
+        Augmentor(
+            dict_key="original",
+            augment_fn=lambda x: no_transforms(image=x)["image"]
         )
     ])
 
@@ -103,20 +112,31 @@ def get_transforms():
 
 
 def get_frozen_transforms():
+    no_transforms = compose([pre_transforms()])
     valid_transforms = compose([pre_transforms(), post_transforms()])
 
     train_data_transforms = transforms.Compose([
         Augmentor(
             dict_key="features",
             augment_fn=lambda x: valid_transforms(image=x)["image"]
+        ),
+        Augmentor(
+            dict_key="original",
+            augment_fn=lambda x: no_transforms(image=x)["image"]
         )
+
     ])
 
     valid_data_transforms = transforms.Compose([
         Augmentor(
             dict_key="features",
             augment_fn=lambda x: valid_transforms(image=x)["image"]
+        ),
+        Augmentor(
+            dict_key="original",
+            augment_fn=lambda x: no_transforms(image=x)["image"]
         )
+
     ])
 
     return train_data_transforms, valid_data_transforms

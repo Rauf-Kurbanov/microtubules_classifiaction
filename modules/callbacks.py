@@ -1,5 +1,6 @@
 import itertools
 import re
+import random
 from collections import defaultdict
 from textwrap import wrap
 
@@ -11,18 +12,19 @@ from matplotlib.figure import Figure
 from sklearn.decomposition import PCA
 from sklearn.metrics import confusion_matrix
 from torch.utils.tensorboard import SummaryWriter
-
+from pathlib import Path
 from modules.utils import Mode, fig_to_pil
+
+MODE_TO_CLASS = {Mode.ZERO_VS_ZERO_ONE: ["Control", "01Taxol"],
+                 Mode.ZERO_VS_ONE: ["Control", "1Taxol"],
+                 Mode.ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol"],
+                 Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["Control", "01Taxol", "1Taxol"]}
 
 
 class ConfusionMatrixCallback(Callback):
     def __init__(self, mode, loader_name="valid"):
         super().__init__(CallbackOrder.Internal)
-        mode_to_class = {Mode.ZERO_VS_ZERO_ONE: ["Control", "01Taxol"],
-                         Mode.ZERO_VS_ONE: ["Control", "1Taxol"],
-                         Mode.ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol"],
-                         Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["Control", "01Taxol", "1Taxol"]}
-        self._class_names = mode_to_class[mode]
+        self._class_names = MODE_TO_CLASS[mode]
         self.loader_name = loader_name
 
     def on_loader_start(self, state):
@@ -65,7 +67,6 @@ class ConfusionMatrixCallback(Callback):
             cm = cm.astype('int')
 
         np.set_printoptions(precision=2)
-        # fig = matplotlib.figure.Figure(figsize=(7, 7), dpi=320, facecolor='w', edgecolor='k')
         fig = Figure(facecolor='w', edgecolor='k')
         ax = fig.add_subplot(1, 1, 1)
         im = ax.imshow(cm, cmap='Oranges')
@@ -97,11 +98,7 @@ class EmbedPlotCallback(Callback):
 
     def __init__(self, mode):
         super().__init__(CallbackOrder.Internal)
-        mode_to_class = {Mode.ZERO_VS_ZERO_ONE: ["Control", "01Taxol"],
-                         Mode.ZERO_VS_ONE: ["Control", "1Taxol"],
-                         Mode.ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol"],
-                         Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["Control", "01Taxol", "1Taxol"]}
-        self._class_names = mode_to_class[mode]
+        self._class_names = MODE_TO_CLASS[mode]
         self._n_classes = len(self._class_names)
         self._colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
                         '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
@@ -153,3 +150,57 @@ class EmbedPlotCallback(Callback):
         ax.legend(self._class_names)
 
         return fig
+
+
+class MissCallback(Callback):
+    def __init__(self, mode, origin_ds, n_examples=5):
+        super().__init__(CallbackOrder.Internal)
+        self.n_examples = n_examples
+        self._class_names = MODE_TO_CLASS[mode]
+        self._missclassified = []  # TODO memory
+        self.origin_ds = origin_ds
+
+    def on_batch_end(self, state: State):
+        targets = state.batch_in['targets']
+        predicted = state.batch_out['logits'].argmax(1).cpu().numpy()
+        images = state.batch_in['original'][:self.n_examples]
+        images = images.cpu().numpy()
+        t_images = state.batch_in['features'][:self.n_examples].permute(0, 2, 3, 1).cpu().numpy()
+        print('images.shape', images.shape)
+
+        for img, t_image, targ, pred, fname in zip(images, t_images, targets, predicted, state.batch_in['name']):
+            if pred != targ:
+                self._missclassified.append({'image': img, 't_image': t_image, 'target': targ, 'pred': pred,
+                                             'name': fname})
+
+    def on_epoch_end(self, state: State):
+
+        n_to_sample = min(self.n_examples, len(self._missclassified))
+        miss_sample = random.sample(self._missclassified, n_to_sample)
+
+        fig, axes = plt.subplots(nrows=3, ncols=n_to_sample, figsize=(20, 10))
+        if n_to_sample == 1:
+            axes = np.expand_dims(axes, axis=1)
+
+        for i in range(n_to_sample):
+            miss_d = miss_sample[i]
+            axes[0, i].imshow(miss_d['image'])
+            axes[0, 0].set_ylabel('Cropped')
+            axes[0, i].set_title(f'{self._class_names[miss_d["pred"]]} instead of {self._class_names[miss_d["target"]]}')
+            axes[1, i].imshow(miss_d['t_image'])
+            axes[1, 0].set_ylabel('Transformed')
+            axes[2, 0].set_ylabel('Origin')
+
+            # TODO function
+            p = Path(miss_d['name'])
+            name_parts = p.name.split('_')
+            ext = name_parts[-1].split('.')[1]
+            new_name = f"{'_'.join(name_parts[:-1])}.{ext}"
+            class_name = p.parent.stem
+            origin_file = self.origin_ds / class_name / new_name
+            origin_img = plt.imread(origin_file)
+            axes[2, i].imshow(origin_img, cmap=plt.cm.gray)
+
+        wandb.log({"Miss Examples":  [wandb.Image(fig_to_pil(fig), caption="Label")]},
+                  step=state.global_step)
+        self._missclassified = []
