@@ -1,5 +1,6 @@
 import itertools
 import re
+import cv2
 import random
 from collections import defaultdict
 from textwrap import wrap
@@ -14,11 +15,14 @@ from sklearn.metrics import confusion_matrix
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 from modules.utils import Mode, fig_to_pil
+from typing import Dict
+from catalyst.dl import utils
 
-MODE_TO_CLASS = {Mode.ZERO_VS_ZERO_ONE: ["Control", "01Taxol"],
-                 Mode.ZERO_VS_ONE: ["Control", "1Taxol"],
+
+MODE_TO_CLASS = {Mode.ZERO_VS_ZERO_ONE: ["01Taxol", "Control"],
+                 Mode.ZERO_VS_ONE: ["1Taxol", "Control"],
                  Mode.ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol"],
-                 Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["Control", "01Taxol", "1Taxol"]}
+                 Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol", "Control"]}
 
 
 class ConfusionMatrixCallback(Callback):
@@ -178,7 +182,7 @@ class MissCallback(Callback):
         n_to_sample = min(self.n_examples, len(self._missclassified))
         miss_sample = random.sample(self._missclassified, n_to_sample)
 
-        fig, axes = plt.subplots(nrows=3, ncols=n_to_sample, figsize=(20, 10))
+        fig, axes = plt.subplots(nrows=3, ncols=n_to_sample, figsize=(30, 15))
         if n_to_sample == 1:
             axes = np.expand_dims(axes, axis=1)
 
@@ -187,7 +191,14 @@ class MissCallback(Callback):
             axes[0, i].imshow(miss_d['image'])
             axes[0, 0].set_ylabel('Cropped')
             axes[0, i].set_title(f'{self._class_names[miss_d["pred"]]} instead of {self._class_names[miss_d["target"]]}')
-            axes[1, i].imshow(miss_d['t_image'])
+            p = Path(miss_d['name'])
+            axes[0, i].set_xlabel(f'{p.relative_to(p.parent.parent.parent)}')
+
+            t_image = miss_d['t_image']
+            m = cv2.UMat(np.zeros_like(t_image))
+            ntimage = cv2.normalize(t_image, m, 0, 255, cv2.NORM_MINMAX).get()
+            ntimage = ntimage.astype(np.int)
+            axes[1, i].imshow(ntimage)
             axes[1, 0].set_ylabel('Transformed')
             axes[2, 0].set_ylabel('Origin')
 
@@ -200,7 +211,73 @@ class MissCallback(Callback):
             origin_file = self.origin_ds / class_name / new_name
             origin_img = plt.imread(origin_file)
             axes[2, i].imshow(origin_img, cmap=plt.cm.gray)
+            axes[2, i].set_xlabel(f'{origin_file.relative_to(origin_file.parent.parent.parent)}')
 
         wandb.log({"Miss Examples":  [wandb.Image(fig_to_pil(fig), caption="Label")]},
                   step=state.global_step)
         self._missclassified = []
+
+
+class WandbCallback(Callback):
+    def __init__(self):
+        super().__init__(CallbackOrder.External)
+
+        self.batch_log_suffix = "_batch"
+        self.epoch_log_suffix = "_epoch"
+
+    @staticmethod
+    def _log_metrics(
+        metrics: Dict, mode: str, step, suffix: str = "", commit: bool = True,
+    ):
+        def key_locate(key: str):
+            """
+            Wandb uses first symbol _ for it service purposes
+            because of that fact, we can not send original metric names
+
+            Args:
+                key: metric name
+            Returns:
+                formatted metric name
+            """
+            if key.startswith("_"):
+                return key[1:]
+            return key
+
+        metrics = {
+            f"{key_locate(key)}/{mode}{suffix}": value
+            for key, value in metrics.items()
+        }
+        print('\nlogging')
+        print(metrics)
+        wandb.log(metrics, commit=commit, step=step)
+
+    def on_batch_end(self, state: State):
+        mode = state.loader_name
+        metrics = state.batch_metrics
+        print('\n state.global_step', state.global_step)
+        self._log_metrics(
+            metrics=metrics,
+            mode=mode,
+            step=state.global_step,
+            suffix=self.batch_log_suffix,
+            commit=True
+        )
+
+    def on_epoch_end(self, state: State):
+        mode_metrics = utils.split_dict_to_subdicts(
+            dct=state.epoch_metrics,
+            prefixes=list(state.loaders.keys()),
+            extra_key="_base",
+        )
+
+        for mode, metrics in mode_metrics.items():
+            print('mode', mode)
+            self._log_metrics(
+                metrics=metrics,
+                mode=mode,
+                step=state.global_step + 1,
+                suffix=self.epoch_log_suffix,
+                commit=False
+            )
+
+        wandb.log(commit=True)

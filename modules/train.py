@@ -5,13 +5,13 @@ from pathlib import Path
 
 import torch
 import wandb
+from catalyst.dl import SupervisedRunner
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
-from catalyst.dl.runner import SupervisedWandbRunner
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
 
-from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback
+from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback, WandbCallback
 from modules.data import get_loaders, get_data, get_frozen_transforms, get_transforms
 from modules.models import ClassificationNet, ResNetEncoder
 
@@ -27,7 +27,7 @@ def main():
     run_name = f"{config.DATA_DIR.stem}_{config.MODE.name}_{frozen_tag}_{timestamp}"
 
     log_dir = Path(config.LOG_ROOT / run_name)
-    wandb.init(project="microtubules_classification", name=run_name)
+    wandb.init(project="microtubules_classification")
     wandb.config.batch_size = config.BATCH_SIZE
     wandb.config.epochs = config.NUM_EPOCHS
     wandb.config.data = config.DATA_DIR.name
@@ -69,7 +69,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = None
-    runner = SupervisedWandbRunner(device=config.DEVICE)
+    runner = SupervisedRunner(device=config.DEVICE)
 
     runner.train(
         model=model,
@@ -91,7 +91,8 @@ def main():
             ),
             ConfusionMatrixCallback(config.MODE),
             EmbedPlotCallback(config.MODE),
-            MissCallback(config.MODE, origin_ds=config.ORIGIN_DATASET)
+            MissCallback(config.MODE, origin_ds=config.ORIGIN_DATASET),
+            WandbCallback()
         ],
         num_epochs=config.NUM_EPOCHS,
         verbose=True,

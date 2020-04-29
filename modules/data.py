@@ -186,7 +186,8 @@ def get_loaders(*,
         num_workers=num_workers,
         shuffle=sampler is None,
         # shuffle data only if Sampler is not specified (PyTorch requirement)
-        sampler=sampler
+        sampler=sampler,
+        drop_last=True
     )
 
     valid_loader = utils.get_loader(
