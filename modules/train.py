@@ -5,6 +5,7 @@ from pathlib import Path
 
 import torch
 import wandb
+import importlib
 from catalyst.dl import SupervisedRunner
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
 from catalyst.utils import set_global_seed, prepare_cudnn
@@ -17,9 +18,7 @@ from modules.data import get_loaders, get_data, get_frozen_transforms, get_trans
 from modules.models import ClassificationNet, ResNetEncoder
 
 
-def main():
-    from modules import config
-
+def main(config):
     set_global_seed(config.SEED)
     prepare_cudnn(deterministic=True)
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
@@ -45,6 +44,9 @@ def main():
 
     train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
                                                         random_state=config.SEED)
+    if config.DEBUG:
+        train_data, valid_data = train_data[:config.BATCH_SIZE], valid_data[:config.BATCH_SIZE]
+
     wandb.config.update({"train_size": train_data.shape[0], "valid_size": valid_data.shape[0]})
 
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
@@ -67,7 +69,7 @@ def main():
 
     model = ClassificationNet(embed_net=encoder,
                               n_classes=num_classes)
-    wandb.watch(model, log_freq=1)
+    wandb.watch(model, log_freq=20)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters())
@@ -108,7 +110,7 @@ def main():
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', type=Path, required=True)
+    parser.add_argument('--config_name', type=str, required=True)
     return parser
 
 
@@ -116,7 +118,5 @@ if __name__ == '__main__':
     parser = get_parser()
     args = parser.parse_known_args()[0]
 
-    shutil.copy2(args.config_path, "/project/modules/config.py")
-    # shutil.copy2(args.config_path, "/Users/raufkurbanov/Programs/microtubules_classifiaction/modules/config.py")
-
-    main()
+    config = importlib.import_module(f"configs.{args.config_name}")
+    main(config)

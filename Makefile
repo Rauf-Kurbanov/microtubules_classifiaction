@@ -5,7 +5,7 @@ BASE_ENV_VERSION=v1.4
 PROJECT_ID=neuro-project-7374990e
 
 DATA_DIR?=data
-CONFIG_DIR?=config
+CONFIG_DIR?=configs
 CODE_DIR?=modules
 NOTEBOOKS_DIR?=notebooks
 RESULTS_DIR?=results
@@ -307,11 +307,11 @@ kill-develop:  ### Terminate the development job
 RUN?=base
 
 .PHONY: train
-train: CONFIG_NAME=remote_config.sample.py
+train: CONFIG_NAME=remote_config_sample
 train: ENTRYPOINT=train.py
 train: CODE_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CODE_DIR)
 train: CONFIG_FROM_DIR=$(PROJECT_PATH_STORAGE)/$(CONFIG_DIR)
-train: TRAIN_CMD=python -u $(CODE_DIR)/$(ENTRYPOINT) --config_path $(PROJECT_PATH_ENV)/$(CONFIG_DIR)/$(CONFIG_NAME)
+train: TRAIN_CMD=python -u $(CODE_DIR)/$(ENTRYPOINT) --config_name $(CONFIG_NAME)
 train: _check_setup upload-code upload-config   ### Run a training job (set up env var 'RUN' to specify the training job),
 	$(NEURO) run \
 		--name $(TRAIN_JOB)-$(RUN) \
