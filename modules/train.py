@@ -11,7 +11,8 @@ from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
 
-from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback, WandbCallback
+from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback, WandbCallback, \
+    BestMetricAccumulator
 from modules.data import get_loaders, get_data, get_frozen_transforms, get_transforms
 from modules.models import ClassificationNet, ResNetEncoder
 
@@ -66,6 +67,8 @@ def main():
 
     model = ClassificationNet(embed_net=encoder,
                               n_classes=num_classes)
+    wandb.watch(model, log_freq=1)
+
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = None
@@ -92,7 +95,8 @@ def main():
             ConfusionMatrixCallback(config.MODE),
             EmbedPlotCallback(config.MODE),
             MissCallback(config.MODE, origin_ds=config.ORIGIN_DATASET),
-            WandbCallback()
+            WandbCallback(),
+            BestMetricAccumulator()
         ],
         num_epochs=config.NUM_EPOCHS,
         verbose=True,

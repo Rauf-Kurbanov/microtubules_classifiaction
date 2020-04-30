@@ -275,7 +275,7 @@ develop: _check_setup upload-code upload-config upload-notebooks  ### Run a deve
 		$(HTTP_AUTH) \
 		--browse \
 		--detach \
-		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \
+		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR):$(PROJECT_PATH_ENV)/$(RESULTS_DIR):rw \
@@ -328,7 +328,7 @@ train: _check_setup upload-code upload-config   ### Run a training job (set up e
 		--env JOB_TIMEOUT=0 \
 		$(OPTION_GCP_CREDENTIALS) $(OPTION_AWS_CREDENTIALS) $(OPTION_WANDB_CREDENTIALS) \
 		$(CUSTOM_ENV_NAME) \
-		bash -c 'cd $(PROJECT_PATH_ENV) && $(TRAIN_CMD)'
+		bash -c 'pip install catalyst==20.3.3 && cd $(PROJECT_PATH_ENV) && $(TRAIN_CMD)'
 ifeq ($(TRAIN_STREAM_LOGS), yes)
 	@echo "Streaming logs of the job $(TRAIN_JOB)-$(RUN)"
 	$(NEURO) exec --no-key-check -T $(TRAIN_JOB)-$(RUN) "tail -f /output" || echo -e "Stopped streaming logs.\nUse 'neuro logs <job>' to see full logs."
