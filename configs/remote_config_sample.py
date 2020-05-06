@@ -5,20 +5,22 @@ import torch
 from modules.utils import Mode
 
 SEED = 42
-PROJECT_ROOT = Path("/Users/raufkurbanov/Programs/microtubules_classifiaction")
+PROJECT_ROOT = Path("/project")
 DATA_DIR = PROJECT_ROOT / "data" / "Processed"
-# DATA_DIR = PROJECT_ROOT / "data" / "Processed"
 LOG_ROOT = PROJECT_ROOT / "results" / "logs"
 MODE = Mode.ZERO_VS_ZERO_ONE_VS_ONE
 WITH_TIMESTAMP = True
 FROZEN = True
 MAIN_METRIC = "accuracy01"  # "auc/_mean"
 
-NUM_EPOCHS = 1
-DEVICE = torch.device("cpu")
-N_WORKERS = 1
-BATCH_SIZE = 64
-WITH_AUGS = False
-DEBUG = True
+NUM_EPOCHS = 30
+DEVICE = torch.device("cuda")
+N_WORKERS = 4
+BATCH_SIZE = 128  # TODO larger
+WITH_AUGS = True
+
 SIAMESE_CKPT = None
+# SIAMESE_CKPT = PROJECT_ROOT / "results" / "embed" / "OldArchive_ZERO_VS_ZERO_ONE_VS_ONE__Apr06_20-49-06" / "checkpoints" / "best.pth"
+
+DEBUG = False
 ORIGIN_DATASET = PROJECT_ROOT / "data" / "TaxolDataset"

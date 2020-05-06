@@ -1,24 +1,27 @@
 import itertools
-import re
 import random
+import re
 from collections import defaultdict
+from pathlib import Path
 from textwrap import wrap
+from typing import Dict
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import wandb
 from catalyst.dl import Callback, CallbackOrder, State
+from catalyst.dl import utils
 from matplotlib.figure import Figure
-from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from sklearn.metrics import confusion_matrix
-from torch.utils.tensorboard import SummaryWriter
-from pathlib import Path
+
 from modules.utils import Mode, fig_to_pil
 
-MODE_TO_CLASS = {Mode.ZERO_VS_ZERO_ONE: ["Control", "01Taxol"],
-                 Mode.ZERO_VS_ONE: ["Control", "1Taxol"],
+MODE_TO_CLASS = {Mode.ZERO_VS_ZERO_ONE: ["01Taxol", "Control"],
+                 Mode.ZERO_VS_ONE: ["1Taxol", "Control"],
                  Mode.ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol"],
-                 Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["Control", "01Taxol", "1Taxol"]}
+                 Mode.ZERO_VS_ZERO_ONE_VS_ONE: ["01Taxol", "1Taxol", "Control"]}
 
 
 class ConfusionMatrixCallback(Callback):
@@ -33,8 +36,6 @@ class ConfusionMatrixCallback(Callback):
             return
 
         lm = state.loader_name
-        log_dir = state.logdir / f"{lm}_log"
-        self.logger = SummaryWriter(log_dir)
 
     def on_epoch_start(self, state: State):
         self.preds = []
@@ -52,11 +53,8 @@ class ConfusionMatrixCallback(Callback):
 
     def on_epoch_end(self, state: State):
         f = self.plot_confusion_matrix(self.gts, self.preds, labels=self._class_names)
-        self.logger.add_figure("confusion_matrix", f, global_step=state.global_epoch)
-
-        self.logger.flush()
-        wandb.log({"confusion_matrix": [wandb.Image(fig_to_pil(f), caption="Label")]},
-                  step=state.global_step)
+        wandb.log({"custom_confusion_matrix": [wandb.Image(fig_to_pil(f), caption="Label")]},
+                  step=state.global_step + 1, commit=False)
 
     @staticmethod
     def plot_confusion_matrix(correct_labels, predict_labels, labels, normalize=False):
@@ -89,30 +87,27 @@ class ConfusionMatrixCallback(Callback):
         ax.yaxis.tick_left()
 
         for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-            ax.text(j, i, format(cm[i, j], 'd') if cm[i,j]!=0 else '.', horizontalalignment="center", fontsize=6, verticalalignment='center', color= "black")
+            ax.text(j, i, format(cm[i, j], 'd') if cm[i,j]!=0 else '.', horizontalalignment="center", fontsize=6,
+                    verticalalignment='center', color= "black")
         fig.set_tight_layout(True)
         return fig
 
 
 class EmbedPlotCallback(Callback):
 
-    def __init__(self, mode):
+    def __init__(self, mode, embedder_fn=TSNE):
         super().__init__(CallbackOrder.Internal)
         self._class_names = MODE_TO_CLASS[mode]
         self._n_classes = len(self._class_names)
         self._colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
                         '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
                         '#bcbd22', '#17becf']
-        self._pca = PCA()
+        self._embedder = embedder_fn()
 
     def on_loader_start(self, state):
         """Prepare tensorboard writers for the current stage"""
         if state.logdir is None:
             return
-
-        lm = state.loader_name
-        log_dir = state.logdir / f"{lm}_log"
-        self.logger = SummaryWriter(log_dir)
 
     def on_epoch_start(self, state: State):
         self.batch_outs = defaultdict(list)
@@ -124,18 +119,14 @@ class EmbedPlotCallback(Callback):
         self.targets[ln].append(state.batch_in['targets'].cpu().numpy())
 
     def on_epoch_end(self, state: State):
-        train_epoch_out = np.concatenate(self.batch_outs["train"])
-        self._pca.fit(train_epoch_out)
-
         val_epoch_out = np.concatenate(self.batch_outs["valid"])
         val_epoch_targets = np.concatenate(self.targets["valid"])
-        val_epoch_embeds = self._pca.transform(val_epoch_out)
+        val_epoch_embeds = self._embedder.fit_transform(val_epoch_out)
 
         f = self.plot_embeddings(val_epoch_embeds, val_epoch_targets)
-        self.logger.add_figure("decomposition", f, global_step=state.global_epoch)
-        self.logger.flush()
+
         wandb.log({"decomposition":  [wandb.Image(fig_to_pil(f), caption="Label")]},
-                  step=state.global_step)
+                  step=state.global_step + 1, commit=False)
 
     def plot_embeddings(self, embeddings, targets, xlim=None, ylim=None):
         fig = plt.figure()
@@ -154,10 +145,10 @@ class EmbedPlotCallback(Callback):
 
 class MissCallback(Callback):
     def __init__(self, mode, origin_ds, n_examples=5):
-        super().__init__(CallbackOrder.Internal)
+        super().__init__(CallbackOrder.MetricAggregation)
         self.n_examples = n_examples
         self._class_names = MODE_TO_CLASS[mode]
-        self._missclassified = []  # TODO memory
+        self._missclassified = []
         self.origin_ds = origin_ds
 
     def on_batch_end(self, state: State):
@@ -166,7 +157,6 @@ class MissCallback(Callback):
         images = state.batch_in['original'][:self.n_examples]
         images = images.cpu().numpy()
         t_images = state.batch_in['features'][:self.n_examples].permute(0, 2, 3, 1).cpu().numpy()
-        print('images.shape', images.shape)
 
         for img, t_image, targ, pred, fname in zip(images, t_images, targets, predicted, state.batch_in['name']):
             if pred != targ:
@@ -178,7 +168,7 @@ class MissCallback(Callback):
         n_to_sample = min(self.n_examples, len(self._missclassified))
         miss_sample = random.sample(self._missclassified, n_to_sample)
 
-        fig, axes = plt.subplots(nrows=3, ncols=n_to_sample, figsize=(20, 10))
+        fig, axes = plt.subplots(nrows=3, ncols=n_to_sample, figsize=(30, 15))
         if n_to_sample == 1:
             axes = np.expand_dims(axes, axis=1)
 
@@ -187,20 +177,116 @@ class MissCallback(Callback):
             axes[0, i].imshow(miss_d['image'])
             axes[0, 0].set_ylabel('Cropped')
             axes[0, i].set_title(f'{self._class_names[miss_d["pred"]]} instead of {self._class_names[miss_d["target"]]}')
-            axes[1, i].imshow(miss_d['t_image'])
+            p = Path(miss_d['name'])
+            axes[0, i].set_xlabel(f'{p.relative_to(p.parent.parent.parent)}')
+
+            t_image = miss_d['t_image']
+            m = cv2.UMat(np.zeros_like(t_image))
+            ntimage = cv2.normalize(t_image, m, 0, 255, cv2.NORM_MINMAX).get()
+            ntimage = ntimage.astype(np.int)
+            axes[1, i].imshow(ntimage)
             axes[1, 0].set_ylabel('Transformed')
             axes[2, 0].set_ylabel('Origin')
 
-            # TODO function
+            def _drop_last_suffix(name):
+                p = Path(name)
+                name_parts = p.name.split('_')
+                ext = name_parts[-1].split('.')[1]
+                new_name = f"{'_'.join(name_parts[:-1])}.{ext}"
+                return new_name
+
+            new_name = _drop_last_suffix(miss_d['name'])
             p = Path(miss_d['name'])
-            name_parts = p.name.split('_')
-            ext = name_parts[-1].split('.')[1]
-            new_name = f"{'_'.join(name_parts[:-1])}.{ext}"
             class_name = p.parent.stem
             origin_file = self.origin_ds / class_name / new_name
             origin_img = plt.imread(origin_file)
             axes[2, i].imshow(origin_img, cmap=plt.cm.gray)
+            axes[2, i].set_xlabel(f'{origin_file.relative_to(origin_file.parent.parent.parent)}')
 
         wandb.log({"Miss Examples":  [wandb.Image(fig_to_pil(fig), caption="Label")]},
-                  step=state.global_step)
+                  step=state.global_step + 1, commit=False)
         self._missclassified = []
+
+
+class WandbCallback(Callback):
+    def __init__(self):
+        super().__init__(CallbackOrder.Logging)
+
+        self.batch_log_suffix = "_batch"
+        self.epoch_log_suffix = "_epoch"
+
+    @staticmethod
+    def _log_metrics(
+        metrics: Dict, mode: str, step, suffix: str = "", commit: bool = True,
+    ):
+        def key_locate(key: str):
+            """
+            Wandb uses first symbol _ for it service purposes
+            because of that fact, we can not send original metric names
+
+            Args:
+                key: metric name
+            Returns:
+                formatted metric name
+            """
+            if key.startswith("_"):
+                return key[1:]
+            return key
+
+        metrics = {
+            f"{key_locate(key)}/{mode}{suffix}": value
+            for key, value in metrics.items()
+        }
+        wandb.log(metrics, commit=commit, step=step)
+
+    def on_batch_end(self, state: State):
+        mode = state.loader_name
+        metrics = state.batch_metrics
+        self._log_metrics(
+            metrics=metrics,
+            mode=mode,
+            step=state.global_step,
+            suffix=self.batch_log_suffix,
+            commit=True
+        )
+
+    def on_epoch_end(self, state: State):
+        mode_metrics = utils.split_dict_to_subdicts(
+            dct=state.epoch_metrics,
+            prefixes=list(state.loaders.keys()) + ['best'],
+            extra_key="_base",
+        )
+
+        for mode, metrics in mode_metrics.items():
+            self._log_metrics(
+                metrics=metrics,
+                mode=mode,
+                step=state.global_step + 1,
+                suffix=self.epoch_log_suffix,
+                commit=False
+            )
+
+        wandb.log(commit=True)
+
+
+class BestMetricAccumulator(Callback):
+    def __init__(self, mode="valid", tracked_metrics=("f1_score", "accuracy01")):
+        super().__init__(CallbackOrder.Metric + 1)
+        self.mode = mode
+        self.best_metrics = defaultdict(lambda: -1)
+        self.tracked_metrics = tracked_metrics
+
+    def on_epoch_end(self, state: State):
+        mode_metrics = utils.split_dict_to_subdicts(
+            dct=state.epoch_metrics,
+            prefixes=list(state.loaders.keys()),
+            extra_key="_base",
+        )
+        for key, value in mode_metrics[self.mode].items():
+            if key not in self.tracked_metrics:
+                continue
+            old_best = self.best_metrics[key]
+            self.best_metrics[key] = max(old_best, value)
+
+        epoch_best = {f"best/{key}": value for key, value in self.best_metrics.items()}
+        state.epoch_metrics.update(epoch_best)

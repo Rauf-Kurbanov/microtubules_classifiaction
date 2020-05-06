@@ -4,7 +4,6 @@ numpy==1.16.4
 requests==2.20.1
 scikit-learn==0.21.2
 alchemy-catalyst==20.2
-catalyst==20.3.1
 Pillow==6.2.1
 pyarrow==0.15.0
 lz4==2.2.1
@@ -12,3 +11,4 @@ albumentations==0.4.1
 pretrainedmodels==0.7.4
 pandas==0.24.2
 tensorboard==2.0.2
+catalyst==20.3.3
