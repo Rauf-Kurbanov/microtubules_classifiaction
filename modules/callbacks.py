@@ -53,7 +53,7 @@ class ConfusionMatrixCallback(Callback):
 
     def on_epoch_end(self, state: State):
         f = self.plot_confusion_matrix(self.gts, self.preds, labels=self._class_names)
-        wandb.log({"confusion_matrix": [wandb.Image(fig_to_pil(f), caption="Label")]},
+        wandb.log({"custom_confusion_matrix": [wandb.Image(fig_to_pil(f), caption="Label")]},
                   step=state.global_step + 1, commit=False)
 
     @staticmethod
@@ -87,7 +87,8 @@ class ConfusionMatrixCallback(Callback):
         ax.yaxis.tick_left()
 
         for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-            ax.text(j, i, format(cm[i, j], 'd') if cm[i,j]!=0 else '.', horizontalalignment="center", fontsize=6, verticalalignment='center', color= "black")
+            ax.text(j, i, format(cm[i, j], 'd') if cm[i,j]!=0 else '.', horizontalalignment="center", fontsize=6,
+                    verticalalignment='center', color= "black")
         fig.set_tight_layout(True)
         return fig
 
