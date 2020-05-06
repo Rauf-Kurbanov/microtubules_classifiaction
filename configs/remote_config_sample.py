@@ -22,5 +22,5 @@ WITH_AUGS = True
 SIAMESE_CKPT = None
 # SIAMESE_CKPT = PROJECT_ROOT / "results" / "embed" / "OldArchive_ZERO_VS_ZERO_ONE_VS_ONE__Apr06_20-49-06" / "checkpoints" / "best.pth"
 
-DEBUG = True
+DEBUG = False
 ORIGIN_DATASET = PROJECT_ROOT / "data" / "TaxolDataset"
