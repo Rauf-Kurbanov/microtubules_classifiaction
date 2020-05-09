@@ -7,6 +7,7 @@ PROJECT_ID=neuro-project-7374990e
 DATA_DIR?=data
 CONFIG_DIR?=configs
 CODE_DIR?=modules
+SCRIPT_DIR?=scripts
 NOTEBOOKS_DIR?=notebooks
 RESULTS_DIR?=results
 
@@ -163,6 +164,7 @@ _check_setup:
 upload-code: TO_CODE_DIR=$(CODE_DIR)
 upload-code: _check_setup  ### Upload code directory to the platform storage
 	$(NEURO) cp --recursive --update --no-target-directory $(CODE_DIR) $(PROJECT_PATH_STORAGE)/$(TO_CODE_DIR)
+	$(NEURO) cp --recursive --update --no-target-directory $(SCRIPT_DIR) $(PROJECT_PATH_STORAGE)/$(SCRIPT_DIR)
 
 .PHONY: download-code
 download-code: _check_setup  ### Download code directory from the platform storage
@@ -277,6 +279,7 @@ develop: _check_setup upload-code upload-config upload-notebooks  ### Run a deve
 		--detach \
 		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CODE_DIR):$(PROJECT_PATH_ENV)/$(CODE_DIR):rw \
+		--volume $(PROJECT_PATH_STORAGE)/$(SCRIPT_DIR):$(PROJECT_PATH_ENV)/$(SCRIPT_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(CONFIG_DIR):$(PROJECT_PATH_ENV)/$(CONFIG_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(RESULTS_DIR):$(PROJECT_PATH_ENV)/$(RESULTS_DIR):rw \
 		--volume $(PROJECT_PATH_STORAGE)/$(NOTEBOOKS_DIR):$(PROJECT_PATH_ENV)/$(NOTEBOOKS_DIR):rw \
@@ -328,7 +331,7 @@ train: _check_setup upload-code upload-config   ### Run a training job (set up e
 		--env JOB_TIMEOUT=0 \
 		$(OPTION_GCP_CREDENTIALS) $(OPTION_AWS_CREDENTIALS) $(OPTION_WANDB_CREDENTIALS) \
 		$(CUSTOM_ENV_NAME) \
-		bash -c 'pip install catalyst==20.3.3 && cd $(PROJECT_PATH_ENV) && $(TRAIN_CMD)'
+		bash -c 'cd $(PROJECT_PATH_ENV) && $(TRAIN_CMD)'
 ifeq ($(TRAIN_STREAM_LOGS), yes)
 	@echo "Streaming logs of the job $(TRAIN_JOB)-$(RUN)"
 	$(NEURO) exec --no-key-check -T $(TRAIN_JOB)-$(RUN) "tail -f /output" || echo -e "Stopped streaming logs.\nUse 'neuro logs <job>' to see full logs."

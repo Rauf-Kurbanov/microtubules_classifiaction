@@ -1,3 +1,4 @@
+# TODO rename
 from itertools import chain
 from pathlib import Path
 
@@ -34,7 +35,11 @@ def process_folder(some_tif, to_folder,
     labels = watershed(-distance, markers, mask=image)
 
     for label in np.unique(labels):
-        x0, x1, y0, y1 = bbox(labels == label)
+        filter_by_label = labels == label
+        cropped_and_filtered = filter_by_label & fimage
+        x0, x1, y0, y1 = bbox(cropped_and_filtered)
+        if x0 >= x1 or y0 >= y1:
+            continue
         crop = nimage[x0:x1, y0:y1]
         volume = (labels == label).sum()
 
@@ -49,15 +54,15 @@ def process_dataset(from_folder, to_folder):
     for p in tqdm(list(tif_files)):
         class_name = p.parent.name
         class_folder = to_folder / class_name
-        class_folder.mkdir(exist_ok=True)
+        class_folder.mkdir(exist_ok=True, parents=True)
         process_folder(p, class_folder)
 
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-
+    # TODO add hyperparameters
     parser.add_argument('--from_folder', type=Path, default=Path('../data/TaxolDataset'))
-    parser.add_argument('--to_folder', type=Path, default=Path('../data/Processed'))
+    parser.add_argument('--to_folder', type=Path, default=Path('../data/CleanProcessed'))
 
     return parser
 

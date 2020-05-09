@@ -37,6 +37,7 @@ def main(config):
     wandb.config.from_siamese = config.SIAMESE_CKPT is not None
     wandb.config.with_augs = config.WITH_AUGS
     wandb.config.debug = config.DEBUG
+    wandb.config.model = "NN"
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))

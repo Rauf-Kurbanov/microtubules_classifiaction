@@ -14,7 +14,13 @@ from torch import nn
 
 from modules.data import get_loaders, get_data, get_frozen_transforms, get_transforms
 from modules.models import ResNetEncoder
-
+import pandas as pd
+from skimage import io
+import random
+import matplotlib.pyplot as plt
+import cv2
+import numpy as np
+from modules.utils import fig_to_pil
 
 class FeatureExtractor(nn.Module):  # TODO
     def __init__(self, embed_net, n_classes):
@@ -27,6 +33,51 @@ class FeatureExtractor(nn.Module):  # TODO
         output = self.embedding_net(x)
         output = self.nonlinear(output)
         return output
+
+
+def on_epoch_end(_missclassified, _class_names, origin_ds, n_examples=5):
+
+    n_to_sample = min(n_examples, len(_missclassified))
+    miss_sample = random.sample(_missclassified, n_to_sample)
+
+    fig, axes = plt.subplots(nrows=3, ncols=n_to_sample, figsize=(30, 15))
+    if n_to_sample == 1:
+        axes = np.expand_dims(axes, axis=1)
+
+    for i in range(n_to_sample):
+        miss_d = miss_sample[i]
+        image = io.imread(Path(miss_d['name']), as_gray=True)
+        axes[0, i].imshow(image, cmap=plt.cm.gray)
+        axes[0, 0].set_ylabel('Cropped')
+        axes[0, i].set_title(f'{_class_names[miss_d["pred"]]} instead of {_class_names[miss_d["target"]]}')
+        p = Path(miss_d['name'])
+        axes[0, i].set_xlabel(f'{p.relative_to(p.parent.parent.parent)}')
+
+        t_image = image
+        m = cv2.UMat(np.zeros_like(t_image))
+        ntimage = cv2.normalize(t_image, m, 0, 255, cv2.NORM_MINMAX).get()
+        ntimage = ntimage.astype(np.int)
+        axes[1, i].imshow(ntimage, cmap=plt.cm.gray)
+        axes[1, 0].set_ylabel('Transformed')
+        axes[2, 0].set_ylabel('Origin')
+
+        def _drop_last_suffix(name):
+            p = Path(name)
+            name_parts = p.name.split('_')
+            ext = name_parts[-1].split('.')[1]
+            new_name = f"{'_'.join(name_parts[:-1])}.{ext}"
+            return new_name
+
+        new_name = _drop_last_suffix(miss_d['name'])
+        p = Path(miss_d['name'])
+        class_name = p.parent.stem
+        origin_file = origin_ds / class_name / new_name
+        origin_img = plt.imread(origin_file)
+        axes[2, i].imshow(origin_img, cmap=plt.cm.gray)
+        axes[2, i].set_xlabel(f'{origin_file.relative_to(origin_file.parent.parent.parent)}')
+
+    wandb.log({"Miss Examples":  [wandb.Image(fig_to_pil(fig), caption="Label")]})
+    _missclassified = []
 
 
 def main(config):
@@ -78,18 +129,22 @@ def main(config):
                              n_classes=num_classes)
     model = model.to(config.DEVICE)
 
-    X, y = dict(), dict()
+    X, y, metadata = dict(), dict(), dict()
     for loader_name, loader in loaders.items():
         xs, ys = [], []
+        meta = []
         for data_dict in loader:
             data = model(data_dict['features'].to(config.DEVICE))
             label = data_dict['targets']
             xs.append(data)
             ys.append(label)
+            for l, n, o in zip(label, data_dict["name"], data_dict["original"]):
+                meta.append({"label": l.item(), "name": n})
         xs = torch.cat(xs, dim=0)
         ys = torch.cat(ys, dim=0)
         X[loader_name] = xs.detach().cpu().numpy()
         y[loader_name] = ys.detach().cpu().numpy()
+        metadata[loader_name] = meta
 
     clf = SVC()
 
@@ -117,6 +172,14 @@ def main(config):
 
     wandb.log({"best/accuracy01/best_epoch": acc,
                "best/f1_score/best_epoch": fscore})
+
+    wandb.sklearn.plot_confusion_matrix(y_valid, y_valid_pred, class_names)
+
+    missclassified_ = metadata['valid']  # TODO pred target
+    missclassified_ = [{'name': d["name"], 'pred': pred, 'target': d['label']}
+                       for d, pred in zip(missclassified_, list(y_valid_pred))]  # TODO filter
+    missclassified_ = [d for d in missclassified_ if d['pred'] != d['target']]  # TODO filter
+    on_epoch_end(missclassified_, _class_names=class_names, origin_ds=config.ORIGIN_DATASET, n_examples=5)
 
 
 def get_parser() -> argparse.ArgumentParser:
