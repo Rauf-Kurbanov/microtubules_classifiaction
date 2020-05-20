@@ -4,11 +4,10 @@ import os
 
 
 def main():
-    HUMAN_JPG_PATH = "/Users/raufkurbanov/Data/microtubules/to_deploy"
-    base = "https://host-data--rauf-kurbanov.jobs.neuro-ai.org.neu.ro/data"
+    HUMAN_JPG_PATH = "/Users/raufkurbanov/Programs/microtubules_classifiaction/data/to_deploy"
+    base = "https://host-data--rauf-kurbanov.jobs.neuro-public.org.neu.ro/data"
 
-    for test_dir, save_path in [("OldArchive/test", "old_links.csv"),
-                                ("NewArchive/test", "new_links.csv")]:
+    for test_dir, save_path in [("FilteredCleanProcessed/test", "test_links.csv")]:
         test_base = os.path.join(base, test_dir)
 
         links = [os.path.join(test_base, x) for x in

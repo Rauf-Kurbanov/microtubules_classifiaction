@@ -5,11 +5,11 @@ from tqdm.auto import tqdm
 
 
 def main():
-    DATA_ROOT = Path("/Users/raufkurbanov/Data/microtubules")
+    DATA_ROOT = Path("/Users/raufkurbanov/Programs/microtubules_classifiaction/data")
     SPLIT_ROOT = Path("/Users/raufkurbanov/Programs/microtubules_classifiaction/data/splits")
     HUMAN_JPG_ROOT = DATA_ROOT / "human_jpg"
 
-    for data_dir in ["NewArchive", "OldArchive"]:
+    for data_dir in ["FilteredCleanProcessed"]:
         print("data_dir", data_dir)
 
         train_df = pd.read_csv(SPLIT_ROOT / data_dir / "train.csv", index_col=0).reset_index()

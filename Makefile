@@ -441,3 +441,17 @@ _upgrade:
 	git checkout -- $(DATA_DIR) $(CODE_DIR) $(CONFIG_DIR) $(NOTEBOOKS_DIR) $(RESULTS_DIR)
 	git checkout -- .gitignore requirements.txt apt.txt setup.cfg README.md
 	@echo "Some files are successfully changed. Please review the changes using git diff."
+
+.PHONY: host_data
+host_data:
+	neuro kill host-data
+	neuro run -s cpu-small \
+	    -v storage:microtubules-classifiaction/data/to_deploy:/data:rw \
+        --http 8686 \
+        --no-http-auth \
+        --name host-data \
+        --browse \
+        --env JOB_TIMEOUT=0 \
+        frolvlad/alpine-python3 \
+        "python -m http.server 8686"
+
