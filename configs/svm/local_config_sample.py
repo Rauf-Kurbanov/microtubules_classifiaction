@@ -5,23 +5,19 @@ import torch
 from modules.utils import Mode
 
 SEED = 42
-PROJECT_ROOT = Path("/project")
+PROJECT_ROOT = Path("/Users/raufkurbanov/Programs/microtubules_classifiaction")
 DATASET_NAME = "FilteredCleanProcessed"
 DATA_DIR = PROJECT_ROOT / "data" / DATASET_NAME
 LOG_ROOT = PROJECT_ROOT / "results" / "logs"
-MODE = Mode.ZERO_VS_ZERO_ONE
+MODE = Mode.ZERO_VS_ONE
 WITH_TIMESTAMP = True
-FROZEN = True
-MAIN_METRIC = "accuracy01"
+FROZEN = False
 
-NUM_EPOCHS = 40
-DEVICE = torch.device("cuda")
+NUM_EPOCHS = 20
+DEVICE = torch.device("cpu")
 N_WORKERS = 4
-BATCH_SIZE = 256
+BATCH_SIZE = 32
 WITH_AUGS = True
-
-SIAMESE_CKPT = None
-
-DEBUG = False
+DEBUG = True
 ORIGIN_DATASET = PROJECT_ROOT / "data" / "TaxolDataset"
-FIXED_SPLIT = True
+FIXED_SPLIT = False

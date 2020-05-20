@@ -11,11 +11,12 @@ from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
+import pandas as pd
 
 from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback, WandbCallback, \
     BestMetricAccumulator
-from modules.data import get_loaders, get_data, get_frozen_transforms, get_transforms
-from modules.models import ClassificationNet, ResNetEncoder
+from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
+from modules.models import ClassificationNet, ResNetEncoder, LargerClassificationNet
 
 
 def main(config):
@@ -37,14 +38,27 @@ def main(config):
     wandb.config.from_siamese = config.SIAMESE_CKPT is not None
     wandb.config.with_augs = config.WITH_AUGS
     wandb.config.debug = config.DEBUG
-    wandb.config.model = "NN"
+    wandb.config.fixed_split = config.FIXED_SPLIT
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
-    df_with_labels, class_names, num_classes = get_data(config.DATA_DIR, config.MODE)
+    df_with_labels, class_names, num_classes = _get_data(config.DATA_DIR)
 
-    train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
-                                                        random_state=config.SEED)
+    if config.FIXED_SPLIT:
+        train_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "train.csv",
+                                 usecols=["class", "filepath", "label"])
+        valid_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "test.csv",
+                                usecols=["class", "filepath", "label"])
+        train_data.filepath = train_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
+        valid_data.filepath = valid_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
+        train_data, class_names, num_classes = filter_data_by_mode(train_data, class_names, num_classes, config.MODE)
+        valid_data, class_names, num_classes = filter_data_by_mode(valid_data, class_names, num_classes, config.MODE)
+    else:
+        df_with_labels, class_names, num_classes = filter_data_by_mode(df_with_labels, class_names, num_classes,
+                                                                       config.MODE)
+        train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
+                                                            random_state=config.SEED)
+
     if config.DEBUG:
         train_data, valid_data = train_data[:config.BATCH_SIZE], valid_data[:config.BATCH_SIZE]
 
@@ -68,7 +82,8 @@ def main(config):
     else:
         encoder = ResNetEncoder(frozen=config.FROZEN)
 
-    model = ClassificationNet(embed_net=encoder,
+    wandb.config.model = "NN2"
+    model = LargerClassificationNet(embed_net=encoder,
                               n_classes=num_classes)
     wandb.watch(model, log_freq=20)
 
@@ -96,7 +111,7 @@ def main(config):
                 activation="Softmax"
             ),
             ConfusionMatrixCallback(config.MODE),
-            EmbedPlotCallback(config.MODE),
+            # EmbedPlotCallback(config.MODE),
             MissCallback(config.MODE, origin_ds=config.ORIGIN_DATASET),
             WandbCallback(),
             BestMetricAccumulator()

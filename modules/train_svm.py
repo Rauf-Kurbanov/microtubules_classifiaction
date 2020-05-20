@@ -1,26 +1,27 @@
 import argparse
 import importlib
+import random
 import shutil
 from datetime import datetime
 from pathlib import Path
 
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import torch
 import wandb
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
+from skimage import io
 from sklearn.metrics import f1_score, accuracy_score
 from sklearn.svm import SVC
 from torch import nn
 
-from modules.data import get_loaders, get_data, get_frozen_transforms, get_transforms
+from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
 from modules.models import ResNetEncoder
-import pandas as pd
-from skimage import io
-import random
-import matplotlib.pyplot as plt
-import cv2
-import numpy as np
 from modules.utils import fig_to_pil
+
 
 class FeatureExtractor(nn.Module):  # TODO
     def __init__(self, embed_net, n_classes):
@@ -96,23 +97,31 @@ def main(config):
     wandb.config.seed = config.SEED
     wandb.config.with_augs = config.WITH_AUGS
     wandb.config.debug = config.DEBUG
+    wandb.config.fixed_split = config.FIXED_SPLIT
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
-    df_with_labels, class_names, num_classes = get_data(config.DATA_DIR, config.MODE)
 
-    train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
-                                                        random_state=config.SEED)
-    if config.DEBUG:
-        train_data, valid_data = train_data[:config.BATCH_SIZE], valid_data[:config.BATCH_SIZE]
+    df_with_labels, class_names, num_classes = _get_data(config.DATA_DIR)
+    if config.FIXED_SPLIT:
+        train_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "train.csv",
+                                 usecols=["class", "filepath", "label"])
+        valid_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "test.csv",
+                                usecols=["class", "filepath", "label"])
+        train_data.filepath = train_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
+        valid_data.filepath = valid_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
+        train_data, class_names, num_classes = filter_data_by_mode(train_data, class_names, num_classes, config.MODE)
+        valid_data, class_names, num_classes = filter_data_by_mode(valid_data, class_names, num_classes, config.MODE)
+    else:
+        df_with_labels, class_names, num_classes = filter_data_by_mode(df_with_labels, class_names, num_classes,
+                                                                       config.MODE)
+        train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
+                                                            random_state=config.SEED)
 
     wandb.config.update({"train_size": train_data.shape[0], "valid_size": valid_data.shape[0]})
-
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
         'records')
 
-    print("Train size:", len(train_data))
-    print("Valid size:", len(valid_data))
 
     transforms = get_transforms() if config.WITH_AUGS else get_frozen_transforms()
     loaders = get_loaders(data_dir=config.DATA_DIR,
@@ -162,14 +171,6 @@ def main(config):
     train_fscore = f1_score(y_train, y_train_pred, average='macro')
     train_acc = accuracy_score(y_train, y_train_pred)
 
-    print("TRAIN")
-    print("Accuracy:", train_acc)
-    print("F1 score:", train_fscore)
-
-    print("VALID")
-    print("Accuracy:", acc)
-    print("F1 score:", fscore)
-
     wandb.log({"best/accuracy01/best_epoch": acc,
                "best/f1_score/best_epoch": fscore})
 
@@ -192,5 +193,5 @@ if __name__ == '__main__':
     parser = get_parser()
     args = parser.parse_known_args()[0]
 
-    config = importlib.import_module(f"configs.embed.{args.config_name}")
+    config = importlib.import_module(f"configs.svm.{args.config_name}")
     main(config)

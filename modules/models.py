@@ -1,6 +1,6 @@
-from torch import nn
 import torch
 import torch.nn.functional as F
+from torch import nn
 from torchvision.models import resnet18
 
 
@@ -74,6 +74,34 @@ class ClassificationNet(nn.Module):
         output = self.embedding_net(x)
         output = self.nonlinear(output)
         scores = F.log_softmax(self.fc1(output), dim=-1)
+        return scores
+
+    def get_embedding(self, x):
+        return self.nonlinear(self.embedding_net(x))
+
+
+def weights_init(m):  # TODO use (Rauf 20.05.20)
+    nn.init.xavier_uniform(m.weight)
+
+
+class LargerClassificationNet(nn.Module):
+    def __init__(self, embed_net, n_classes):
+        super().__init__()
+        self.embedding_net = embed_net
+        self.n_classes = n_classes
+        self.nonlinear1 = nn.PReLU()
+        self.nonlinear2 = nn.PReLU()
+        self.fc1 = nn.Linear(embed_net.embed_size, 256)
+        self.fc2 = nn.Linear(256, n_classes)
+
+        # self.apply(weights_init)
+
+    def forward(self, x):
+        output = self.embedding_net(x)
+        output = self.nonlinear1(output)
+        output = self.fc1(output)
+        output = self.nonlinear2(output)
+        scores = F.log_softmax(self.fc2(output), dim=-1)
         return scores
 
     def get_embedding(self, x):

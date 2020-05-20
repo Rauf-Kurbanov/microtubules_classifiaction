@@ -1,9 +1,9 @@
 import collections
-import torch
 
 import matplotlib.pyplot as plt
 import numpy as np
-from albumentations import Compose
+import torch
+from albumentations import Compose, HorizontalFlip, VerticalFlip
 from albumentations import LongestMaxSize, PadIfNeeded
 from albumentations import Normalize
 from albumentations import ShiftScaleRotate, IAAPerspective, RandomBrightnessContrast, \
@@ -14,13 +14,13 @@ from catalyst.data.augmentor import Augmentor
 from catalyst.data.reader import ScalarReader, ReaderCompose
 from catalyst.dl import utils
 from catalyst.dl.utils import get_loader
-from catalyst.utils import get_dataset_labeling
 from catalyst.utils import create_dataset, create_dataframe, map_dataframe
+from catalyst.utils import get_dataset_labeling
 from torch.utils.data import Dataset
+from torch.utils.data.dataloader import default_collate as default_collate_fn
 from torchvision import transforms
 
 from modules.utils import Mode
-from torch.utils.data.dataloader import default_collate as default_collate_fn
 
 BORDER_CONSTANT = 0
 BORDER_REFLECT = 2
@@ -66,6 +66,8 @@ def hard_transforms():
         RandomGamma(gamma_limit=(85, 115), p=0.3),
         HueSaturationValue(p=0.3),
         ImageCompression(quality_lower=80),
+        HorizontalFlip(p=0.3),
+        VerticalFlip(p=0.3)
     ]
 
     return result
@@ -221,8 +223,7 @@ def _get_data(data_dir):
     return df_with_labels, class_names, num_classes
 
 
-def get_data(data_dir, mode):
-    df_with_labels, class_names, num_classes = _get_data(data_dir)
+def filter_data_by_mode(df_with_labels, class_names, num_classes, mode):
     if mode is Mode.ZERO_VS_ZERO_ONE:
         df_with_labels.loc[df_with_labels["class"] == "Control", "label"] = 0
         df_with_labels.loc[df_with_labels["class"] == "01Taxol", "label"] = 1
