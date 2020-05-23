@@ -450,6 +450,7 @@ host_data:
         --http 8686 \
         --no-http-auth \
         --name host-data \
+        --life-span=0 \
         --browse \
         --env JOB_TIMEOUT=0 \
         frolvlad/alpine-python3 \

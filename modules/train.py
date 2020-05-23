@@ -39,6 +39,7 @@ def main(config):
     wandb.config.with_augs = config.WITH_AUGS
     wandb.config.debug = config.DEBUG
     wandb.config.fixed_split = config.FIXED_SPLIT
+    wandb.config.backbone = config.BACKBONE
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
@@ -48,7 +49,7 @@ def main(config):
         train_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "train.csv",
                                  usecols=["class", "filepath", "label"])
         valid_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "test.csv",
-                                usecols=["class", "filepath", "label"])
+                                 usecols=["class", "filepath", "label"])
         train_data.filepath = train_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
         valid_data.filepath = valid_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
         train_data, class_names, num_classes = filter_data_by_mode(train_data, class_names, num_classes, config.MODE)
@@ -77,8 +78,9 @@ def main(config):
                           transforms=transforms)
 
     wandb.config.n_layers = config.N_LAYERS
-    model_fn = {1: ClassificationNet,
-                2: LargerClassificationNet}[config.N_LAYERS]
+    model_fn, model_tag = {1: (ClassificationNet, "NN1"),
+                           2: (LargerClassificationNet, "NN2")}[config.N_LAYERS]
+    wandb.config.model = model_tag
 
     model = model_fn(backbone_name=config.BACKBONE,
                      n_classes=num_classes)

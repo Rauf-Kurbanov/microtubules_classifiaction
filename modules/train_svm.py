@@ -86,6 +86,7 @@ def main(config):
     wandb.config.with_augs = config.WITH_AUGS
     wandb.config.debug = config.DEBUG
     wandb.config.fixed_split = config.FIXED_SPLIT
+    wandb.config.backbone = config.BACKBONE
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
@@ -122,6 +123,10 @@ def main(config):
 
     model = pretrainedmodels.__dict__[config.BACKBONE]()
     model.last_linear = putils.Identity()
+    model = model.to(config.DEVICE)
+    model = model.eval()
+    for param in model.parameters():
+        param.requires_grad = False
 
     X, y, metadata = dict(), dict(), dict()
     for loader_name, loader in loaders.items():
@@ -129,6 +134,7 @@ def main(config):
         meta = []
         for data_dict in loader:
             data = model(data_dict['features'].to(config.DEVICE))
+            data = data.to(torch.device("cpu"))
             label = data_dict['targets']
             xs.append(data)
             ys.append(label)
