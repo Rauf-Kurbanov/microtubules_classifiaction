@@ -9,6 +9,8 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pretrainedmodels
+import pretrainedmodels.utils as putils
 import torch
 import wandb
 from catalyst.utils import set_global_seed, prepare_cudnn
@@ -19,21 +21,7 @@ from sklearn.svm import SVC
 from torch import nn
 
 from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
-from modules.models import ResNetEncoder
 from modules.utils import fig_to_pil
-
-
-class FeatureExtractor(nn.Module):  # TODO
-    def __init__(self, embed_net, n_classes):
-        super().__init__()
-        self.embedding_net = embed_net
-        self.n_classes = n_classes
-        self.nonlinear = nn.PReLU()
-
-    def forward(self, x):
-        output = self.embedding_net(x)
-        output = self.nonlinear(output)
-        return output
 
 
 def on_epoch_end(_missclassified, _class_names, origin_ds, n_examples=5):
@@ -98,6 +86,7 @@ def main(config):
     wandb.config.with_augs = config.WITH_AUGS
     wandb.config.debug = config.DEBUG
     wandb.config.fixed_split = config.FIXED_SPLIT
+    wandb.config.backbone = config.BACKBONE
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
@@ -132,11 +121,12 @@ def main(config):
                           batch_size=config.BATCH_SIZE,
                           transforms=transforms)
 
-    encoder = ResNetEncoder(frozen=config.FROZEN)
-
-    model = FeatureExtractor(embed_net=encoder,
-                             n_classes=num_classes)
+    model = pretrainedmodels.__dict__[config.BACKBONE]()
+    model.last_linear = putils.Identity()
     model = model.to(config.DEVICE)
+    model = model.eval()
+    for param in model.parameters():
+        param.requires_grad = False
 
     X, y, metadata = dict(), dict(), dict()
     for loader_name, loader in loaders.items():
@@ -144,6 +134,7 @@ def main(config):
         meta = []
         for data_dict in loader:
             data = model(data_dict['features'].to(config.DEVICE))
+            data = data.to(torch.device("cpu"))
             label = data_dict['targets']
             xs.append(data)
             ys.append(label)
