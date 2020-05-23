@@ -1,49 +1,5 @@
-import torch
-import torch.nn.functional as F
+import pretrainedmodels
 from torch import nn
-from torchvision.models import resnet18
-
-
-class ResNetEncoder(torch.nn.Module):  # TODO
-    embed_size = 512
-
-    def __init__(self, pretrained=True, frozen=False):
-        super().__init__()
-        self.resnet = resnet18(pretrained=pretrained)
-
-        if frozen:
-            for param in self.resnet.parameters():
-                param.requires_grad = False
-
-    def forward(self, x):
-        x = self.resnet.conv1(x)
-        x = self.resnet.bn1(x)
-        x = self.resnet.relu(x)
-        x = self.resnet.maxpool(x)
-
-        x = self.resnet.layer1(x)
-        x = self.resnet.layer2(x)
-        x = self.resnet.layer3(x)
-        x = self.resnet.layer4(x)
-
-        x = self.resnet.avgpool(x)
-        x = torch.flatten(x, 1)
-
-        return x
-
-    @staticmethod
-    def from_siamese_ckpt(ckpt_path, frozen=False):
-        encoder = ResNetEncoder(pretrained=False, frozen=False)
-        siamese_model = SiameseNet(encoder)
-        state_dict = torch.load(ckpt_path)['model_state_dict']
-        siamese_model.load_state_dict(state_dict)
-
-        resnet = siamese_model.embedding_net
-
-        if frozen:
-            for param in resnet.parameters():
-                param.requires_grad = False
-        return resnet
 
 
 class SiameseNet(nn.Module):
@@ -62,47 +18,54 @@ class SiameseNet(nn.Module):
         return self.embedding_net(x)
 
 
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.xavier_normal_(m.weight)
+
+
 class ClassificationNet(nn.Module):
-    def __init__(self, embed_net, n_classes):
-        super(ClassificationNet, self).__init__()
-        self.embedding_net = embed_net
+    def __init__(self, backbone_name, n_classes, frozen_encoder=True):
+        super().__init__()
         self.n_classes = n_classes
-        self.nonlinear = nn.PReLU()
-        self.fc1 = nn.Linear(embed_net.embed_size, n_classes)
+
+        model = pretrainedmodels.__dict__[backbone_name]()
+        dim_feats = model.last_linear.in_features
+        if frozen_encoder:
+            for param in model.parameters():
+                param.requires_grad = False
+
+        model.last_linear = nn.Sequential(nn.PReLU(),
+                                          nn.Linear(dim_feats, n_classes),
+                                          nn.LogSoftmax())
+
+        self.net = model
+        self.apply(weights_init)
 
     def forward(self, x):
-        output = self.embedding_net(x)
-        output = self.nonlinear(output)
-        scores = F.log_softmax(self.fc1(output), dim=-1)
-        return scores
-
-    def get_embedding(self, x):
-        return self.nonlinear(self.embedding_net(x))
-
-
-def weights_init(m):  # TODO use (Rauf 20.05.20)
-    nn.init.xavier_uniform(m.weight)
+        return self.net(x)
 
 
 class LargerClassificationNet(nn.Module):
-    def __init__(self, embed_net, n_classes):
+    def __init__(self, backbone_name, n_classes, frozen_encoder=True):
         super().__init__()
-        self.embedding_net = embed_net
         self.n_classes = n_classes
-        self.nonlinear1 = nn.PReLU()
-        self.nonlinear2 = nn.PReLU()
-        self.fc1 = nn.Linear(embed_net.embed_size, 256)
-        self.fc2 = nn.Linear(256, n_classes)
 
-        # self.apply(weights_init)
+        model = pretrainedmodels.__dict__[backbone_name]()
+        dim_feats = model.last_linear.in_features
+        if frozen_encoder:
+            for param in model.parameters():
+                param.requires_grad = False
+
+        model.last_linear = nn.Sequential(nn.PReLU(),
+                                          nn.Linear(dim_feats, 256),
+                                          nn.PReLU(),
+                                          nn.Linear(256, n_classes),
+                                          nn.LogSoftmax())
+        model.last_linear.apply(weights_init)
+
+        self.net = model
+        self.apply(weights_init)
 
     def forward(self, x):
-        output = self.embedding_net(x)
-        output = self.nonlinear1(output)
-        output = self.fc1(output)
-        output = self.nonlinear2(output)
-        scores = F.log_softmax(self.fc2(output), dim=-1)
-        return scores
-
-    def get_embedding(self, x):
-        return self.nonlinear(self.embedding_net(x))
+        return self.net(x)

@@ -16,7 +16,7 @@ import pandas as pd
 from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback, WandbCallback, \
     BestMetricAccumulator
 from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
-from modules.models import ClassificationNet, ResNetEncoder, LargerClassificationNet
+from modules.models import ClassificationNet, LargerClassificationNet
 
 
 def main(config):
@@ -76,15 +76,12 @@ def main(config):
                           batch_size=config.BATCH_SIZE,
                           transforms=transforms)
 
-    if config.SIAMESE_CKPT:
-        encoder = ResNetEncoder.from_siamese_ckpt(config.SIAMESE_CKPT,
-                                                  frozen=config.FROZEN)
-    else:
-        encoder = ResNetEncoder(frozen=config.FROZEN)
+    wandb.config.n_layers = config.N_LAYERS
+    model_fn = {1: ClassificationNet,
+                2: LargerClassificationNet}[config.N_LAYERS]
 
-    wandb.config.model = "NN2"
-    model = LargerClassificationNet(embed_net=encoder,
-                              n_classes=num_classes)
+    model = model_fn(backbone_name=config.BACKBONE,
+                     n_classes=num_classes)
     wandb.watch(model, log_freq=20)
 
     criterion = nn.CrossEntropyLoss()

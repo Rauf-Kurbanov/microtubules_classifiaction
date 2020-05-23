@@ -9,6 +9,8 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pretrainedmodels
+import pretrainedmodels.utils as putils
 import torch
 import wandb
 from catalyst.utils import set_global_seed, prepare_cudnn
@@ -19,21 +21,7 @@ from sklearn.svm import SVC
 from torch import nn
 
 from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
-from modules.models import ResNetEncoder
 from modules.utils import fig_to_pil
-
-
-class FeatureExtractor(nn.Module):  # TODO
-    def __init__(self, embed_net, n_classes):
-        super().__init__()
-        self.embedding_net = embed_net
-        self.n_classes = n_classes
-        self.nonlinear = nn.PReLU()
-
-    def forward(self, x):
-        output = self.embedding_net(x)
-        output = self.nonlinear(output)
-        return output
 
 
 def on_epoch_end(_missclassified, _class_names, origin_ds, n_examples=5):
@@ -132,11 +120,8 @@ def main(config):
                           batch_size=config.BATCH_SIZE,
                           transforms=transforms)
 
-    encoder = ResNetEncoder(frozen=config.FROZEN)
-
-    model = FeatureExtractor(embed_net=encoder,
-                             n_classes=num_classes)
-    model = model.to(config.DEVICE)
+    model = pretrainedmodels.__dict__[config.BACKBONE]()
+    model.last_linear = putils.Identity()
 
     X, y, metadata = dict(), dict(), dict()
     for loader_name, loader in loaders.items():

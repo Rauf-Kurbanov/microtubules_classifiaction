@@ -21,3 +21,4 @@ WITH_AUGS = True
 DEBUG = True
 ORIGIN_DATASET = PROJECT_ROOT / "data" / "TaxolDataset"
 FIXED_SPLIT = False
+BACKBONE = "resnet18"
