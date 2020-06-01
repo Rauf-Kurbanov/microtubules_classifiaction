@@ -319,7 +319,7 @@ train: _check_setup upload-code upload-config   ### Run a training job (set up e
 	$(NEURO) run \
 		--name $(TRAIN_JOB)-$(RUN) \
 		--description "$(PROJECT_ID):train" \
-		--preset $(PRESET) \
+		--preset gpu-large \
 		--wait-start \
 		$(TRAIN_WAIT_START_OPTION) \
 		--volume $(DATA_DIR_STORAGE):$(PROJECT_PATH_ENV)/$(DATA_DIR):ro \

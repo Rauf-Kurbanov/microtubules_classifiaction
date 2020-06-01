@@ -17,6 +17,7 @@ from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCa
     BestMetricAccumulator
 from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
 from modules.models import ClassificationNet, LargerClassificationNet
+import ttach as tta
 
 
 def main(config):
@@ -40,6 +41,7 @@ def main(config):
     wandb.config.debug = config.DEBUG
     wandb.config.fixed_split = config.FIXED_SPLIT
     wandb.config.backbone = config.BACKBONE
+    wandb.config.tta = config.TTA
 
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.__file__, str(log_dir))
@@ -90,6 +92,9 @@ def main(config):
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = None
     runner = SupervisedRunner(device=config.DEVICE)
+
+    if config.TTA:
+        model = tta.ClassificationTTAWrapper(model, tta.aliases.d4_transform())
 
     runner.train(
         model=model,

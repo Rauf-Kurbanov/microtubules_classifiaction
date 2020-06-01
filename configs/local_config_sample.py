@@ -25,3 +25,4 @@ ORIGIN_DATASET = PROJECT_ROOT / "data" / "TaxolDataset"
 FIXED_SPLIT = True
 BACKBONE = "resnet18"
 N_LAYERS = 2
+TTA = True
