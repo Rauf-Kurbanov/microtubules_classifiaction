@@ -1,47 +1,52 @@
-# microtubules_classifiaction
+# Microtubules Classifiaction
 
-# Human eval links
+## Description
 
-[OldArchive](https://docs.google.com/spreadsheets/d/1I67LPugvFstlxN-4fRkSHU022-5iB3g0vD7SUXC4Nwo/edit#gid=0)
+The antimitotic drug Taxol is an important new drug for the treatment of certain types of cancer. This substance impacts the cytoskeleton of the cell, entangling it. As a result, the cell cannot perform mitosis. 
 
-[NewArchive](https://docs.google.com/spreadsheets/d/1Bei2whcJG4WMK2fEHrc17XkdYUK6sSv4C0cXb_hxBck/edit#gid=0)
+We are given images of the cytoskeleton of cells under the influence of a different dose of the drug from the laboratory. Different dosages of taxol act differently on the cytoskeleton formed by microtubules, which can be seen in the pictures under a microscope.
 
-# Description
+In this repo, we develop a toolset that will help to infer the dosage of the drug for each organism.
 
-Created by Rauf Kurbanov (kurbanov.re@gmail.com)
+Paper: <coming soon>
+W&B Report: <coming soon>
 
-# Development Environment
+# Quickstart
+## How to run locally
+```
+# setup the docker environment
+make -f Makefile.local setup
+
+# reproduce experiments passing the config name and device
+# for example 
+make -f Makefile.local train CONFIG_NAME=local_gpu_config DEVICE=device=1
+
+# reproduce experiment with SVM in the same manner
+# if you don't pass the parameter will simple use default
+make -f Makefile.local train-svm
+```
+## How to run on Neu.ro
 
 This project is designed to run on [Neuro Platform](https://neu.ro), so you can jump into problem-solving right away.
 
+```
+# setup the environment
+make setup
+
+# reproduce experiments 
+make train CONFIG_NAME=<config_name>
+
+# reproduce experiments with SVM 
+make train ENTRYPOINT=train_svm.py
+```
+
+
 ## Directory Structure
 
-| Mount Point                                  | Description           | Storage URI                                                                  |
+| Mount Point                                  | Description           | Neuro Storage URI                                                                  |
 |:-------------------------------------------- |:--------------------- |:---------------------------------------------------------------------------- |
 |`microtubules_classifiaction/data/`                              | Data                  | `storage:microtubules_classifiaction/data/`                              |
 |`microtubules_classifiaction/modules/` | Python modules        | `storage:microtubules_classifiaction/modules/` |
 |`microtubules_classifiaction/notebooks/`                         | Jupyter notebooks     | `storage:microtubules_classifiaction/notebooks/`                         |
 |`microtubules_classifiaction/results/`                           | Logs and results      | `storage:microtubules_classifiaction/results/`                           |
 
-## Development
-
-Follow the instructions below in order to setup the environment and start Jupyter development session.
-
-## Neuro Platform
-
-* Setup development environment `make setup`
-* Run Jupyter with GPU: `make jupyter`
-* Kill Jupyter: `make kill-jupyter`
-* Get the list of available template commands: `make help`
-
-# Data
-
-## Uploading via Web UI
-
-On local machine run `make filebrowser` and open job's URL on your mobile device or desktop.
-Through a simple file explorer interface you can upload test images and perform file operations.
-
-## Uploading via CLI
-
-On local machine run `make upload-data`. This command pushes local files stored in `./data`
-into `storage:microtubules_classifiaction/data` mounted to your development environment's `/project/data`.
