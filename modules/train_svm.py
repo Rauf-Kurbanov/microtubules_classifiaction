@@ -1,8 +1,6 @@
 import argparse
 import importlib
 import random
-import shutil
-from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -18,7 +16,6 @@ from catalyst.utils import split_dataframe_train_test
 from skimage import io
 from sklearn.metrics import f1_score, accuracy_score
 from sklearn.svm import SVC
-from torch import nn
 
 from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
 from modules.utils import fig_to_pil
@@ -72,12 +69,7 @@ def on_epoch_end(_missclassified, _class_names, origin_ds, n_examples=5):
 def main(config):
     set_global_seed(config.SEED)
     prepare_cudnn(deterministic=True)
-    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-    frozen_tag = "FROZEN" if config.FROZEN else ""
-    timestamp = str(current_time) if config.WITH_TIMESTAMP else ""
-    run_name = f"{config.DATA_DIR.stem}_{config.MODE.name}_{frozen_tag}_{timestamp}"
 
-    log_dir = Path(config.LOG_ROOT / run_name)
     wandb.init(project="microtubules_classification")
     wandb.config.data = config.DATA_DIR.name
     wandb.config.mode = config.MODE.name
@@ -87,9 +79,6 @@ def main(config):
     wandb.config.debug = config.DEBUG
     wandb.config.fixed_split = config.FIXED_SPLIT
     wandb.config.backbone = config.BACKBONE
-
-    log_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(config.__file__, str(log_dir))
 
     df_with_labels, class_names, num_classes = _get_data(config.DATA_DIR)
     if config.FIXED_SPLIT:
@@ -104,6 +93,7 @@ def main(config):
     else:
         df_with_labels, class_names, num_classes = filter_data_by_mode(df_with_labels, class_names, num_classes,
                                                                        config.MODE)
+
         train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
                                                             random_state=config.SEED)
 
@@ -140,6 +130,8 @@ def main(config):
             ys.append(label)
             for l, n, o in zip(label, data_dict["name"], data_dict["original"]):
                 meta.append({"label": l.item(), "name": n})
+            if config.DEBUG:
+                break
         xs = torch.cat(xs, dim=0)
         ys = torch.cat(ys, dim=0)
         X[loader_name] = xs.detach().cpu().numpy()
