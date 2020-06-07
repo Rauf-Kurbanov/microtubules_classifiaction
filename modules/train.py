@@ -1,99 +1,89 @@
 import argparse
 import shutil
-from datetime import datetime
 from pathlib import Path
 
+import configargparse
+import pandas as pd
 import torch
+import ttach as tta
 import wandb
-import importlib
 from catalyst.dl import SupervisedRunner
 from catalyst.dl.callbacks import AccuracyCallback, AUCCallback, F1ScoreCallback
 from catalyst.utils import set_global_seed, prepare_cudnn
 from catalyst.utils import split_dataframe_train_test
 from torch import nn
-import pandas as pd
 
-from modules.callbacks import ConfusionMatrixCallback, EmbedPlotCallback, MissCallback, WandbCallback, \
+from modules.callbacks import ConfusionMatrixCallback, MissCallback, WandbCallback, \
     BestMetricAccumulator
 from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
 from modules.models import ClassificationNet, LargerClassificationNet
-import ttach as tta
+from modules.utils import Mode, str2bool
 
 
 def main(config):
-    set_global_seed(config.SEED)
+    set_global_seed(config.seed)
     prepare_cudnn(deterministic=True)
-    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-    frozen_tag = "FROZEN" if config.FROZEN else ""
-    timestamp = str(current_time) if config.WITH_TIMESTAMP else ""
-    run_name = f"{config.DATA_DIR.stem}_{config.MODE.name}_{frozen_tag}_{timestamp}"
 
-    log_dir = Path(config.LOG_ROOT / run_name)
     wandb.init(project="microtubules_classification")
-    wandb.config.batch_size = config.BATCH_SIZE
-    wandb.config.epochs = config.NUM_EPOCHS
-    wandb.config.data = config.DATA_DIR.name
-    wandb.config.mode = config.MODE.name
-    wandb.config.frozen = config.FROZEN
-    wandb.config.seed = config.SEED
-    wandb.config.from_siamese = config.SIAMESE_CKPT is not None
-    wandb.config.with_augs = config.WITH_AUGS
-    wandb.config.debug = config.DEBUG
-    wandb.config.fixed_split = config.FIXED_SPLIT
-    wandb.config.backbone = config.BACKBONE
-    wandb.config.tta = config.TTA
+    wandb.run.save()
+
+    log_dir = Path(config.log_root / wandb.run.name)
+
+    # TODO
+    wandb.config.update(args)
+    wandb.config.update(dict(model="NN", mode=config.mode.value),
+                        allow_val_change=True)
 
     log_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(config.__file__, str(log_dir))
-    df_with_labels, class_names, num_classes = _get_data(config.DATA_DIR)
+    shutil.copy2(config.config, str(log_dir))
+    df_with_labels, class_names, num_classes = _get_data(config.data_root / config.data)
 
-    if config.FIXED_SPLIT:
-        train_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "train.csv",
+    if config.fixed_split:
+        # TODO refactor
+        train_data = pd.read_csv(config.split_path / "train.csv",
                                  usecols=["class", "filepath", "label"])
-        valid_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "test.csv",
+        valid_data = pd.read_csv(config.split_path / "test.csv",
                                  usecols=["class", "filepath", "label"])
-        train_data.filepath = train_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
-        valid_data.filepath = valid_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
-        train_data, class_names, num_classes = filter_data_by_mode(train_data, class_names, num_classes, config.MODE)
-        valid_data, class_names, num_classes = filter_data_by_mode(valid_data, class_names, num_classes, config.MODE)
+        train_data.filepath = train_data.filepath.apply(lambda p: config.data_root / p)
+        valid_data.filepath = valid_data.filepath.apply(lambda p: config.data_root / p)
+        train_data, class_names, num_classes = filter_data_by_mode(train_data, class_names, num_classes, config.mode)
+        valid_data, class_names, num_classes = filter_data_by_mode(valid_data, class_names, num_classes, config.mode)
     else:
         df_with_labels, class_names, num_classes = filter_data_by_mode(df_with_labels, class_names, num_classes,
-                                                                       config.MODE)
+                                                                       config.mode)
         train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
-                                                            random_state=config.SEED)
+                                                            random_state=config.seed)
 
-    if config.DEBUG:
-        train_data, valid_data = train_data[:config.BATCH_SIZE], valid_data[:config.BATCH_SIZE]
+    if config.debug:
+        train_data, valid_data = train_data[:config.batch_size], valid_data[:config.batch_size]
 
     wandb.config.update({"train_size": train_data.shape[0], "valid_size": valid_data.shape[0]})
 
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
         'records')
 
-    transforms = get_transforms() if config.WITH_AUGS else get_frozen_transforms()
-    loaders = get_loaders(data_dir=config.DATA_DIR,
+    transforms = get_transforms() if config.with_augs else get_frozen_transforms()
+    loaders = get_loaders(data_dir=config.data_root / config.data,
                           train_data=train_data,
                           valid_data=valid_data,
                           num_classes=num_classes,
-                          num_workers=config.N_WORKERS,
-                          batch_size=config.BATCH_SIZE,
+                          num_workers=config.n_workers,
+                          batch_size=config.batch_size,
                           transforms=transforms)
 
-    wandb.config.n_layers = config.N_LAYERS
-    model_fn, model_tag = {1: (ClassificationNet, "NN1"),
-                           2: (LargerClassificationNet, "NN2")}[config.N_LAYERS]
-    wandb.config.model = model_tag
+    model_fn = {1: ClassificationNet,
+                2: LargerClassificationNet}[config.n_layers]
 
-    model = model_fn(backbone_name=config.BACKBONE,
+    model = model_fn(backbone_name=config.backbone,
                      n_classes=num_classes)
     wandb.watch(model, log_freq=20)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters())
     scheduler = None
-    runner = SupervisedRunner(device=config.DEVICE)
+    runner = SupervisedRunner(device=config.device)
 
-    if config.TTA:
+    if config.tta:
         model = tta.ClassificationTTAWrapper(model, tta.aliases.d4_transform())
 
     runner.train(
@@ -114,15 +104,15 @@ def main(config):
                 input_key="targets_one_hot",
                 activation="Softmax"
             ),
-            ConfusionMatrixCallback(config.MODE),
-            # EmbedPlotCallback(config.MODE),
-            MissCallback(config.MODE, origin_ds=config.ORIGIN_DATASET),
+            ConfusionMatrixCallback(config.mode),
+            # EmbedPlotCallback(config.mode),
+            MissCallback(config.mode, origin_ds=config.data_root / config.origin_data),
             WandbCallback(),
-            BestMetricAccumulator()
+            BestMetricAccumulator(),
         ],
-        num_epochs=config.NUM_EPOCHS,
+        num_epochs=config.num_epoch,
         verbose=True,
-        main_metric=config.MAIN_METRIC,
+        main_metric=config.main_metric,
         minimize_metric=False,
         fp16={"apex": False}
     )
@@ -135,8 +125,32 @@ def get_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == '__main__':
-    parser = get_parser()
-    args = parser.parse_known_args()[0]
+    parser = configargparse.ArgParser()
+    parser.add_argument("-c", "--config", required=True, is_config_file=True)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--data_root", type=Path)
+    parser.add_argument("--data", type=str)
+    parser.add_argument("--log_root", type=Path)
+    parser.add_argument("--project_root", type=Path)
+    parser.add_argument("--mode", type=Mode, choices=list(Mode))
+    parser.add_argument("--frozen", type=str2bool)
+    parser.add_argument("--num_epoch", type=int)
+    parser.add_argument("--device", type=torch.device)
+    parser.add_argument("--n_workers", type=int)
+    parser.add_argument("--batch_size", type=int)
+    parser.add_argument("--with_augs", type=str2bool)
+    parser.add_argument("--debug", type=str2bool)
+    parser.add_argument("--origin_data", type=str)
+    parser.add_argument("--fixed_split", type=str2bool)
+    parser.add_argument("--split_path", type=Path)
+    parser.add_argument("--backbone", type=str)
+    parser.add_argument("--tta", type=str2bool)
+    parser.add_argument("--n_layers", type=int, choices=[1, 2])
+    parser.add_argument("--main_metric", type=str,
+                        help="the key to the name of the metric by which the checkpoints will be selected")
 
-    config = importlib.import_module(f"configs.{args.config_name}")
-    main(config)
+    args, _ = parser.parse_known_args()
+    if args.fixed_split and args.split_path is None:
+        parser.error("--fixed_split requires --split_path")
+
+    main(args)
