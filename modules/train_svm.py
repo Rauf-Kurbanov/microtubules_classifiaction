@@ -1,8 +1,8 @@
 import argparse
-import importlib
 import random
 from pathlib import Path
 
+import configargparse
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,7 +18,7 @@ from sklearn.metrics import f1_score, accuracy_score
 from sklearn.svm import SVC
 
 from modules.data import get_loaders, _get_data, get_frozen_transforms, get_transforms, filter_data_by_mode
-from modules.utils import fig_to_pil
+from modules.utils import fig_to_pil, str2bool, Mode
 
 
 def on_epoch_end(_missclassified, _class_names, origin_ds, n_examples=5):
@@ -67,53 +67,50 @@ def on_epoch_end(_missclassified, _class_names, origin_ds, n_examples=5):
 
 
 def main(config):
-    set_global_seed(config.SEED)
+    set_global_seed(config.seed)
     prepare_cudnn(deterministic=True)
 
     wandb.init(project="microtubules_classification")
-    wandb.config.data = config.DATA_DIR.name
-    wandb.config.mode = config.MODE.name
-    wandb.config.model = "SVM"
-    wandb.config.seed = config.SEED
-    wandb.config.with_augs = config.WITH_AUGS
-    wandb.config.debug = config.DEBUG
-    wandb.config.fixed_split = config.FIXED_SPLIT
-    wandb.config.backbone = config.BACKBONE
+    wandb.run.save()
 
-    df_with_labels, class_names, num_classes = _get_data(config.DATA_DIR)
-    if config.FIXED_SPLIT:
-        train_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "train.csv",
+    wandb.config.update(args)
+    wandb.config.update(dict(model="SVM", mode=config.mode.value),
+                        allow_val_change=True)
+
+    df_with_labels, class_names, num_classes = _get_data(config.data_root / config.data)
+    if config.fixed_split:
+        train_data = pd.read_csv(config.split_path / "train.csv",
                                  usecols=["class", "filepath", "label"])
-        valid_data = pd.read_csv(config.PROJECT_ROOT / "data" / "splits" / config.DATASET_NAME / "test.csv",
-                                usecols=["class", "filepath", "label"])
-        train_data.filepath = train_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
-        valid_data.filepath = valid_data.filepath.apply(lambda p: config.PROJECT_ROOT / "data" / p)
-        train_data, class_names, num_classes = filter_data_by_mode(train_data, class_names, num_classes, config.MODE)
-        valid_data, class_names, num_classes = filter_data_by_mode(valid_data, class_names, num_classes, config.MODE)
+        valid_data = pd.read_csv(config.split_path / "test.csv",
+                                 usecols=["class", "filepath", "label"])
+        train_data.filepath = train_data.filepath.apply(lambda p: config.data_root / p)
+        valid_data.filepath = valid_data.filepath.apply(lambda p: config.data_root / p)
+        train_data, class_names, num_classes = filter_data_by_mode(train_data, class_names, num_classes, config.mode)
+        valid_data, class_names, num_classes = filter_data_by_mode(valid_data, class_names, num_classes, config.mode)
     else:
         df_with_labels, class_names, num_classes = filter_data_by_mode(df_with_labels, class_names, num_classes,
-                                                                       config.MODE)
+                                                                       config.mode)
 
         train_data, valid_data = split_dataframe_train_test(df_with_labels, test_size=0.2,
-                                                            random_state=config.SEED)
+                                                            random_state=config.seed)
 
     wandb.config.update({"train_size": train_data.shape[0], "valid_size": valid_data.shape[0]})
     train_data, valid_data = train_data.to_dict('records'), valid_data.to_dict(
         'records')
 
 
-    transforms = get_transforms() if config.WITH_AUGS else get_frozen_transforms()
-    loaders = get_loaders(data_dir=config.DATA_DIR,
+    transforms = get_transforms() if config.with_augs else get_frozen_transforms()
+    loaders = get_loaders(data_dir=config.data_root / config.data,
                           train_data=train_data,
                           valid_data=valid_data,
                           num_classes=num_classes,
-                          num_workers=config.N_WORKERS,
-                          batch_size=config.BATCH_SIZE,
+                          num_workers=config.n_workers,
+                          batch_size=config.batch_size,
                           transforms=transforms)
 
-    model = pretrainedmodels.__dict__[config.BACKBONE]()
+    model = pretrainedmodels.__dict__[config.backbone]()
     model.last_linear = putils.Identity()
-    model = model.to(config.DEVICE)
+    model = model.to(config.device)
     model = model.eval()
     for param in model.parameters():
         param.requires_grad = False
@@ -123,14 +120,14 @@ def main(config):
         xs, ys = [], []
         meta = []
         for data_dict in loader:
-            data = model(data_dict['features'].to(config.DEVICE))
+            data = model(data_dict['features'].to(config.device))
             data = data.to(torch.device("cpu"))
             label = data_dict['targets']
             xs.append(data)
             ys.append(label)
             for l, n, o in zip(label, data_dict["name"], data_dict["original"]):
                 meta.append({"label": l.item(), "name": n})
-            if config.DEBUG:
+            if config.debug:
                 break
         xs = torch.cat(xs, dim=0)
         ys = torch.cat(ys, dim=0)
@@ -163,7 +160,8 @@ def main(config):
     missclassified_ = [{'name': d["name"], 'pred': pred, 'target': d['label']}
                        for d, pred in zip(missclassified_, list(y_valid_pred))]  # TODO filter
     missclassified_ = [d for d in missclassified_ if d['pred'] != d['target']]  # TODO filter
-    on_epoch_end(missclassified_, _class_names=class_names, origin_ds=config.ORIGIN_DATASET, n_examples=5)
+    on_epoch_end(missclassified_, _class_names=class_names,
+                 origin_ds=config.data_root / config.origin_data, n_examples=5)
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -173,8 +171,25 @@ def get_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == '__main__':
-    parser = get_parser()
-    args = parser.parse_known_args()[0]
+    parser = configargparse.ArgParser()
+    parser.add_argument("-c", "--config", required=True, is_config_file=True)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--data_root", type=Path)
+    parser.add_argument("--data", type=str)
+    parser.add_argument("--project_root", type=Path)
+    parser.add_argument("--mode", type=Mode, choices=list(Mode))
+    parser.add_argument("--device", type=torch.device)
+    parser.add_argument("--n_workers", type=int)
+    parser.add_argument("--batch_size", type=int)
+    parser.add_argument("--with_augs", type=str2bool)
+    parser.add_argument("--debug", type=str2bool)
+    parser.add_argument("--origin_data", type=str)
+    parser.add_argument("--fixed_split", type=str2bool)
+    parser.add_argument("--split_path", type=Path)
+    parser.add_argument("--backbone", type=str)
 
-    config = importlib.import_module(f"configs.svm.{args.config_name}")
-    main(config)
+    args, _ = parser.parse_known_args()
+    if args.fixed_split and args.split_path is None:
+        parser.error("--fixed_split requires --split_path")
+
+    main(args)

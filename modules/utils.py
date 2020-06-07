@@ -11,13 +11,14 @@ import torch
 from PIL import Image
 from torch import nn
 from torch.nn.functional import softmax
+import configargparse
 
 
-class Mode(Enum):
-    ZERO_VS_ZERO_ONE = 0
-    ZERO_VS_ONE = 1
-    ZERO_ONE_VS_ONE = 2
-    ZERO_VS_ZERO_ONE_VS_ONE = 3
+class Mode(Enum):  # TODO move
+    ZERO_VS_ZERO_ONE = "0_vs_0.1"
+    ZERO_VS_ONE = "0_vs_1"
+    ZERO_ONE_VS_ONE = "0.1_vs_1"
+    ZERO_VS_ZERO_ONE_VS_ONE = "0_vs_0.1_vs_1"
 
 
 def get_model(model_name: str, num_classes: int, pretrained: str = "imagenet"):
@@ -84,3 +85,14 @@ def fig_to_pil(fig):
     buf.close()
 
     return pil_img
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise configargparse.ArgumentTypeError('Boolean value expected.')

@@ -3,10 +3,10 @@ DEVICE?=all
 
 .PHONY: setup
 setup:
-	sudo dokcer build -t $(IMAGE) .
+	sudo docker build -t $(IMAGE) .
 
 .PHONY: train-svm
-train-svm: CONFIG_NAME=local_gpu_config
+train-svm: CONFIG=local_gpu_config.yaml
 train-svm:
 	sudo docker run -it --gpus $(DEVICE) \
 	   -p 8888:8888 \
@@ -16,10 +16,11 @@ train-svm:
 	   -v $(shell pwd)/results:/project/results \
 	   -v $(shell pwd)/configs:/project/configs \
 	   $(IMAGE) \
-	   python project/modules/train_svm.py --config_name $(CONFIG_NAME)
+	   python project/modules/train_svm.py --config $(CONFIG)
 
 .PHONY: train
-train: CONFIG_NAME=local_gpu_config
+train: CONFIG=local_gpu_config.yaml
+train: CMD=python project/modules/train.py --config $(CONFIG)
 train:
 	sudo docker run -it --gpus $(DEVICE) \
 	   -p 8888:8888 \
@@ -28,5 +29,6 @@ train:
 	   -v $(shell pwd)/notebooks:/project/notebooks \
 	   -v $(shell pwd)/results:/project/results \
 	   -v $(shell pwd)/configs:/project/configs \
+	   --env NM_WANDB_TOKEN_PATH=/project/configs/wandb-token.txt \
 	   $(IMAGE) \
-	   python project/modules/train.py --config_name $(CONFIG_NAME)
+	   $(CMD)
