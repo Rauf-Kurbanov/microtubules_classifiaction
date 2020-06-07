@@ -27,13 +27,11 @@ def main(config):
     wandb.init(project="microtubules_classification")
     wandb.run.save()
 
-    log_dir = Path(config.log_root / wandb.run.name)
-
-    # TODO
     wandb.config.update(args)
     wandb.config.update(dict(model="NN", mode=config.mode.value),
                         allow_val_change=True)
 
+    log_dir = config.log_root / wandb.run.name
     log_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(config.config, str(log_dir))
     df_with_labels, class_names, num_classes = _get_data(config.data_root / config.data)
