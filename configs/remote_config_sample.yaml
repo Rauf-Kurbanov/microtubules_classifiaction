@@ -1,0 +1,21 @@
+project_root: /project
+data_root: /project/data
+log_root: /project/results/logs
+data: FilteredCleanProcessed
+origin_data: TaxolDataset
+fixed_split: true
+split_path: /project/data/splits/FilteredCleanProcessed
+
+seed: 42
+mode: 0_vs_0.1_vs_1
+frozen: true
+num_epoch: 40
+device: cuda
+n_workers: 4
+batch_size: 256
+with_augs: true
+debug: false
+backbone: resnet152
+tta: true
+n_layers: 2
+main_metric: accuracy01

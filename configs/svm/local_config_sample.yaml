@@ -1,0 +1,17 @@
+project_root: ..
+data_root: ../data
+data: FilteredCleanProcessed
+origin_data: TaxolDataset
+fixed_split: true
+split_path: ../data/splits/FilteredCleanProcessed
+
+seed: 42
+mode: 0_vs_0.1_vs_1
+frozen: true
+device: cpu
+n_workers: 4
+batch_size: 32
+with_augs: true
+debug: true
+backbone: resnet18
+n_layers: 2
