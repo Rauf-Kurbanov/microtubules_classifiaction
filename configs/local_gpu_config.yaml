@@ -19,3 +19,4 @@ backbone: resnet152
 tta: true
 n_layers: 2
 main_metric: accuracy01
+wandb_offline: false

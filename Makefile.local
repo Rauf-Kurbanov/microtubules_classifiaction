@@ -6,20 +6,21 @@ setup:
 	sudo docker build -t $(IMAGE) .
 
 .PHONY: train-svm
-train-svm: CONFIG=local_gpu_config.yaml
+train-svm: CONFIG=project/configs/svm/local_gpu_config.yaml
 train-svm:
 	sudo docker run -it --gpus $(DEVICE) \
-	   -p 8888:8888 \
+	   -p 8889:8889 \
 	   -v $(shell pwd)/data:/project/data \
 	   -v $(shell pwd)/modules:/project/modules \
 	   -v $(shell pwd)/notebooks:/project/notebooks \
 	   -v $(shell pwd)/results:/project/results \
 	   -v $(shell pwd)/configs:/project/configs \
+	   --env NM_WANDB_TOKEN_PATH=/project/configs/wandb-token.txt \
 	   $(IMAGE) \
 	   python project/modules/train_svm.py --config $(CONFIG)
 
 .PHONY: train
-train: CONFIG=local_gpu_config.yaml
+train: CONFIG=project/configs/local_gpu_config.yaml
 train: CMD=python project/modules/train.py --config $(CONFIG)
 train:
 	sudo docker run -it --gpus $(DEVICE) \
@@ -30,5 +31,23 @@ train:
 	   -v $(shell pwd)/results:/project/results \
 	   -v $(shell pwd)/configs:/project/configs \
 	   --env NM_WANDB_TOKEN_PATH=/project/configs/wandb-token.txt \
+	   $(IMAGE) \
+	   $(CMD)
+
+
+.PHONY: eval
+eval: RUN_NAME=amber-meadow-691
+eval: CONFIG=project/results/logs/$(RUN_NAME)/local_gpu_config.yaml
+eval: CMD=python project/modules/evaluate.py --config $(CONFIG)
+eval:
+	sudo docker run -it --gpus $(DEVICE) \
+	   --ipc=host \
+	   -v $(shell pwd)/data:/project/data \
+	   -v $(shell pwd)/modules:/project/modules \
+	   -v $(shell pwd)/notebooks:/project/notebooks \
+	   -v $(shell pwd)/results:/project/results \
+	   -v $(shell pwd)/configs:/project/configs \
+	   --env NM_WANDB_TOKEN_PATH=/project/configs/wandb-token.txt \
+	   --env WANDB_MODE=dryrun \
 	   $(IMAGE) \
 	   $(CMD)

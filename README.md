@@ -14,9 +14,17 @@ W&B Report: <coming soon>
 
 # Quickstart
 
+Download and unpack the data
+```
+wget <link>
+unzip data.zip
+rm data.zip
+```
+
 To use Weight & Biases for logging copy your token to `configs/wandb-token.txt`
  
 ## How to run locally
+
 ```
 # setup the docker environment
 make -f Makefile.local setup

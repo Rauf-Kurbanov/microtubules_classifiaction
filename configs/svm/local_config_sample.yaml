@@ -1,12 +1,12 @@
 project_root: ..
-data_root: ../data
-data: FilteredCleanProcessed
+data_dir: ../data/FilteredCleanProcessed
+log_root: ../results/logs
 origin_data: TaxolDataset
 fixed_split: true
-split_path: ../data/splits/FilteredCleanProcessed
+split_path: ../data/splits/FilteredCleanProcessed_new
 
 seed: 42
-mode: 0_vs_0.1_vs_1
+mode: 0.1_vs_1
 frozen: true
 device: cpu
 n_workers: 4
@@ -15,3 +15,4 @@ with_augs: true
 debug: true
 backbone: resnet18
 n_layers: 2
+wandb_offline: true

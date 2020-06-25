@@ -2,6 +2,7 @@ import collections
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch
 from albumentations import Compose, HorizontalFlip, VerticalFlip
 from albumentations import LongestMaxSize, PadIfNeeded
@@ -15,6 +16,7 @@ from catalyst.data.reader import ScalarReader, ReaderCompose
 from catalyst.dl import utils
 from catalyst.dl.utils import get_loader
 from catalyst.utils import create_dataset, create_dataframe, map_dataframe
+from catalyst.utils import split_dataframe_train_test
 from catalyst.utils import get_dataset_labeling
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate as default_collate_fn
@@ -144,12 +146,14 @@ def get_frozen_transforms():
     return train_data_transforms, valid_data_transforms
 
 
+# TODO rename
 def get_loaders(*,
                 data_dir,
                 train_data, valid_data,
                 num_classes,
                 batch_size: int = 64,
                 num_workers: int = 4,
+                shuffle_train: bool,
                 sampler=None,
                 transforms=None) -> collections.OrderedDict:
     open_fn = ReaderCompose([
@@ -186,11 +190,8 @@ def get_loaders(*,
         dict_transform=train_data_transforms,
         batch_size=batch_size,
         num_workers=num_workers,
-        shuffle=sampler is None,
-        # shuffle data only if Sampler is not specified (PyTorch requirement)
-        sampler=sampler,
-        drop_last=True
-    )
+        shuffle=shuffle_train,
+        sampler=sampler)
 
     valid_loader = utils.get_loader(
         valid_data,
@@ -209,7 +210,51 @@ def get_loaders(*,
     return loaders
 
 
-def _get_data(data_dir):
+def get_test_loader(*,
+                    data_dir,
+                    test_data,
+                    num_classes,
+                    batch_size: int = 64,
+                    num_workers: int = 4):
+    open_fn = ReaderCompose([
+        TifImageReader(
+            input_key="filepath",
+            output_key="features",
+            rootpath=data_dir
+        ),
+
+        ScalarReader(
+            input_key="label",
+            output_key="targets",
+            default_value=-1,
+            dtype=np.int64
+        ),
+
+        ScalarReader(
+            input_key="label",
+            output_key="targets_one_hot",
+            default_value=-1,
+            dtype=np.int64,
+            one_hot_classes=num_classes
+        )
+    ])
+
+    _, test_data_transforms = get_transforms()
+
+    valid_loader = utils.get_loader(
+        test_data,
+        open_fn=open_fn,
+        dict_transform=test_data_transforms,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=False,
+        sampler=None
+    )
+
+    return valid_loader
+
+
+def get_data(data_dir):
     dataset = create_dataset(dirs=f"{data_dir}/*", extension="*.tif")
     df = create_dataframe(dataset, columns=["class", "filepath"])
     tag_to_label = get_dataset_labeling(df, "class")
@@ -223,7 +268,7 @@ def _get_data(data_dir):
     return df_with_labels, class_names, num_classes
 
 
-def filter_data_by_mode(df_with_labels, class_names, num_classes, mode):
+def filter_data_by_mode(df_with_labels, mode):
     if mode is Mode.ZERO_VS_ZERO_ONE:
         df_with_labels.loc[df_with_labels["class"] == "Control", "label"] = 0
         df_with_labels.loc[df_with_labels["class"] == "01Taxol", "label"] = 1
@@ -242,7 +287,7 @@ def filter_data_by_mode(df_with_labels, class_names, num_classes, mode):
         df_with_labels = df_with_labels[df_with_labels['class'] != "Control"]
         return df_with_labels, ["01Taxol", "1Taxol"], 2
 
-    return df_with_labels, class_names, num_classes
+    return df_with_labels, ["Control", "01Taxol", "1Taxol"], 3
 
 
 class SiameseDataset(Dataset):
@@ -317,7 +362,6 @@ def get_loaders_siamese(*,
                         batch_size: int = 64,
                         num_workers: int = 4,
                         transforms=None) -> collections.OrderedDict:
-
     if transforms is None:  # TODO
         train_data_transforms, valid_data_transforms = get_transforms()
     else:
@@ -357,3 +401,23 @@ def get_loaders_siamese(*,
     loaders["valid"] = valid_loader
 
     return loaders
+
+
+def train_val_test_split(*, data_dir, mode, seed, split_path=None):
+    if split_path:
+        train_val_df = pd.read_csv(split_path / "train.csv", usecols=["class", "filepath", "label"])
+        test_df = pd.read_csv(split_path / "test.csv", usecols=["class", "filepath", "label"])
+        train_val_df.filepath = train_val_df.filepath.apply(lambda p: data_dir / p)
+        test_df.filepath = test_df.filepath.apply(lambda p: data_dir / p)
+    else:
+        train_val_test_df, class_names, num_classes = get_data(data_dir)
+        train_val_df, test_df = split_dataframe_train_test(train_val_test_df,
+                                                           test_size=0.1, random_state=seed)
+
+    train_val_df, class_names, num_classes = filter_data_by_mode(train_val_df, mode)
+
+    test_df, _, _ = filter_data_by_mode(test_df, mode)
+    train_df, valid_df = split_dataframe_train_test(train_val_df,
+                                                    test_size=0.2, random_state=seed)
+
+    return train_df, valid_df, test_df, num_classes, class_names  # TODO

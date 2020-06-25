@@ -7,15 +7,16 @@ fixed_split: true
 split_path: ../data/splits/FilteredCleanProcessed
 
 seed: 42
-mode: 0_vs_1
+mode: 0_vs_0.1_vs_1
 frozen: true
 num_epoch: 1
 device: cpu
 n_workers: 4
-batch_size: 32
+batch_size: 16
 with_augs: true
 debug: true
 backbone: resnet18
-tta: true
-n_layers: 2
+tta: false
+n_layers: 1
 main_metric: accuracy01
+wandb_offline: false

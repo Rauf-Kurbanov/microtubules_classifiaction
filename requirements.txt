@@ -15,5 +15,5 @@ pandas==0.24.2
 tensorboard==2.0.2
 catalyst==20.3.3
 ttach==0.0.2
-wandb==0.9.0
+wandb==0.9.1
 ConfigArgParse==1.2.3

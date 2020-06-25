@@ -96,3 +96,54 @@ def str2bool(v):
         return False
     else:
         raise configargparse.ArgumentTypeError('Boolean value expected.')
+
+
+def get_nn_parser():
+    parser = configargparse.ArgParser()
+    parser.add_argument("-c", "--config", required=True, is_config_file=True)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--data_root", type=Path)
+    parser.add_argument("--data", type=str) # TODO
+    parser.add_argument("--log_root", type=Path)
+    parser.add_argument("--project_root", type=Path)
+    parser.add_argument("--mode", type=Mode, choices=list(Mode))
+    parser.add_argument("--frozen", type=str2bool)
+    parser.add_argument("--num_epoch", type=int)
+    parser.add_argument("--device", type=torch.device)
+    parser.add_argument("--n_workers", type=int)
+    parser.add_argument("--batch_size", type=int)
+    parser.add_argument("--with_augs", type=str2bool)
+    parser.add_argument("--debug", type=str2bool)
+    parser.add_argument("--origin_data", type=str)
+    parser.add_argument("--fixed_split", type=str2bool)
+    parser.add_argument("--split_path", type=Path)
+    parser.add_argument("--backbone", type=str)
+    parser.add_argument("--tta", type=str2bool)
+    parser.add_argument("--n_layers", type=int, choices=[1, 2])
+    parser.add_argument("--main_metric", type=str,
+                        help="the key to the name of the metric by which the checkpoints will be selected")
+    parser.add_argument("--wandb_offline", type=str2bool)
+
+    return parser
+
+
+def get_svm_parser():
+    parser = configargparse.ArgParser()
+    parser.add_argument("-c", "--config", required=True, is_config_file=True)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--data_dir", type=Path)
+    parser.add_argument("--log_root", type=Path)
+    parser.add_argument("--project_root", type=Path)
+    parser.add_argument("--mode", type=Mode, choices=list(Mode))
+    parser.add_argument("--device", type=torch.device)
+    parser.add_argument("--n_workers", type=int)
+    parser.add_argument("--batch_size", type=int)
+    parser.add_argument("--with_augs", type=str2bool)
+    parser.add_argument("--debug", type=str2bool)
+    parser.add_argument("--origin_data", type=str)
+    parser.add_argument("--fixed_split", type=str2bool)
+    parser.add_argument("--split_path", type=Path)
+    parser.add_argument("--backbone", type=str)
+    parser.add_argument("--wandb_offline", type=str2bool)
+
+    return parser
