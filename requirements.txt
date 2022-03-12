@@ -6,7 +6,7 @@ matplotlib==3.1.0
 numpy==1.16.4
 requests==2.20.1
 scikit-learn==0.21.2
-Pillow==6.2.1
+Pillow==9.0.1
 pyarrow==0.15.0
 lz4==2.2.1
 albumentations==0.4.1
